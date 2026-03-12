@@ -1,11 +1,24 @@
-import { useInvoices, Invoice } from '@/hooks/useInvoices';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { useInvoices } from '@/hooks/useInvoices';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { FileText, Plus, Eye } from 'lucide-react';
+import { FileText, Plus, Eye, Trash2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { useToast } from '@/hooks/use-toast';
 
 export default function InvoicesList() {
-  const { invoices, isLoading } = useInvoices();
+  const { invoices, isLoading, deleteDraft } = useInvoices();
+  const { toast } = useToast();
+
+  const handleDelete = async (e: React.MouseEvent, id: string) => {
+    e.preventDefault();
+    if (!confirm('Delete this draft invoice?')) return;
+    try {
+      await deleteDraft.mutateAsync(id);
+      toast({ title: 'Draft deleted' });
+    } catch (err: any) {
+      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+    }
+  };
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -55,13 +68,24 @@ export default function InvoicesList() {
                       </p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-3">
                     <div className="text-right">
                       <p className="font-bold text-foreground">${Number(inv.total_amount).toFixed(2)}</p>
                       <span className={`text-xs px-2 py-1 rounded-full ${
                         inv.status === 'published' ? 'bg-success/10 text-success' : 'bg-warning/10 text-warning'
                       }`}>{inv.status}</span>
                     </div>
+                    {inv.status === 'draft' && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="text-destructive hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
+                        onClick={e => handleDelete(e, inv.id)}
+                        disabled={deleteDraft.isPending}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    )}
                     <Eye className="w-4 h-4 text-muted-foreground" />
                   </div>
                 </CardContent>

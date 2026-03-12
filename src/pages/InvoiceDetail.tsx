@@ -4,15 +4,31 @@ import { useClients } from '@/hooks/useClients';
 import { useUserSettings } from '@/hooks/useUserSettings';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { FileText, Download, CheckCircle, ArrowLeft } from 'lucide-react';
+import { FileText, Download, CheckCircle, ArrowLeft, Trash2, Info } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import jsPDF from 'jspdf';
+
+const REFERENCE_DESCRIPTIONS: Record<string, string> = {
+  '04_104_0125_6_1': 'Assistance with Personal Activities',
+  '04_102_0125_6_1': 'Personal Care Support',
+  '04_104_0115_6_1': 'Assistance with Personal Activities (High)',
+  '04_210_0125_6_1': 'Assistance with Personal Activities — Standard — Weeknight',
+  '04_104_0125_6_3': 'Assistance with Personal Activities — Standard — Saturday',
+  '04_104_0125_6_4': 'Assistance with Personal Activities — Standard — Sunday',
+  '04_104_0125_6_5': 'Assistance with Personal Activities — Standard — Public Holiday',
+  '04_103_0125_6_1': 'Assistance with Personal Activities — High — Weekday',
+  '04_399_0125_6_1': 'House and/or Yard Maintenance',
+  '01_011_0107_1_3': 'Daily Activities — Standard — Saturday',
+  '04_104_0125_6_2': 'Assistance with Personal Activities — Evening',
+  '04_210_0125_6_3': 'Assistance with Personal Activities — Evening — Saturday',
+};
 import autoTable from 'jspdf-autotable';
 
 export default function InvoiceDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { invoices, publishInvoice } = useInvoices();
+  const { invoices, publishInvoice, deleteDraft } = useInvoices();
   const { clients } = useClients();
   const { settings } = useUserSettings();
   const { toast } = useToast();
@@ -30,6 +46,17 @@ export default function InvoiceDetail() {
   const handlePublish = async () => {
     await publishInvoice.mutateAsync(invoice.id);
     toast({ title: 'Invoice published! 🎉' });
+  };
+
+  const handleDelete = async () => {
+    if (!confirm('Delete this draft invoice? This cannot be undone.')) return;
+    try {
+      await deleteDraft.mutateAsync(invoice.id);
+      toast({ title: 'Draft deleted' });
+      navigate('/invoices');
+    } catch (err: any) {
+      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+    }
   };
 
   const generateCalculationsPDF = () => {
@@ -82,7 +109,7 @@ export default function InvoiceDetail() {
     const tableData = shifts.map(s => [
       s.shift_date,
       client?.service_description ?? '',
-      client?.ref_number ?? '',
+      s.reference_number || client?.ref_number || '',
       s.invoice_hours.toFixed(2),
       `$${s.invoice_rate}`,
       `$${s.invoice_amount.toFixed(2)}`,
@@ -174,16 +201,34 @@ export default function InvoiceDetail() {
                 </tr>
               </thead>
               <tbody>
-                {shifts.map((s, i) => (
-                  <tr key={i} className="border-b border-border/50">
-                    <td className="py-2">{s.shift_date}</td>
-                    <td>{client?.service_description}</td>
-                    <td>{client?.ref_number}</td>
-                    <td className="text-right">{s.invoice_hours.toFixed(2)}</td>
-                    <td className="text-right">${s.invoice_rate}</td>
-                    <td className="text-right font-medium">${s.invoice_amount.toFixed(2)}</td>
-                  </tr>
-                ))}
+                {shifts.map((s, i) => {
+                  const refNum = s.reference_number || client?.ref_number;
+                  const refDesc = refNum ? REFERENCE_DESCRIPTIONS[refNum] : undefined;
+                  return (
+                    <tr key={i} className="border-b border-border/50">
+                      <td className="py-2">{s.shift_date}</td>
+                      <td>{client?.service_description}</td>
+                      <td>
+                        {refNum ? (
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="inline-flex items-center gap-1 cursor-default">
+                                  {refNum}
+                                  {refDesc && <Info className="w-3 h-3 text-muted-foreground" />}
+                                </span>
+                              </TooltipTrigger>
+                              {refDesc && <TooltipContent><p>{refDesc}</p></TooltipContent>}
+                            </Tooltip>
+                          </TooltipProvider>
+                        ) : '-'}
+                      </td>
+                      <td className="text-right">{s.invoice_hours.toFixed(2)}</td>
+                      <td className="text-right">${s.invoice_rate}</td>
+                      <td className="text-right font-medium">${s.invoice_amount.toFixed(2)}</td>
+                    </tr>
+                  );
+                })}
                 <tr className="font-bold">
                   <td colSpan={5} className="py-2">Total</td>
                   <td className="text-right">${Number(invoice.total_amount).toFixed(2)}</td>
@@ -197,9 +242,14 @@ export default function InvoiceDetail() {
       {/* Actions */}
       <div className="flex gap-3 justify-end">
         {invoice.status === 'draft' && (
-          <Button onClick={handlePublish} className="gap-2 gradient-primary text-primary-foreground">
-            <CheckCircle className="w-4 h-4" /> Publish
-          </Button>
+          <>
+            <Button variant="outline" className="gap-2 text-destructive hover:text-destructive" onClick={handleDelete} disabled={deleteDraft.isPending}>
+              <Trash2 className="w-4 h-4" /> Delete Draft
+            </Button>
+            <Button onClick={handlePublish} className="gap-2 gradient-primary text-primary-foreground" disabled={publishInvoice.isPending}>
+              <CheckCircle className="w-4 h-4" /> Publish
+            </Button>
+          </>
         )}
         <Button variant="outline" className="gap-2" onClick={generateCalculationsPDF}>
           <Download className="w-4 h-4" /> Calculations PDF

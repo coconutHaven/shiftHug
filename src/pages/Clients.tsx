@@ -15,11 +15,12 @@ function ClientRatesSection({ clientId }: { clientId: string }) {
   const { rates, addRate, deleteRate } = useClientRates(clientId);
   const [name, setName] = useState('');
   const [amount, setAmount] = useState('');
+  const [refNum, setRefNum] = useState('');
 
   const handleAdd = () => {
     if (!name || !amount) return;
-    addRate.mutate({ client_id: clientId, rate_name: name, rate_amount: parseFloat(amount) });
-    setName(''); setAmount('');
+    addRate.mutate({ client_id: clientId, rate_name: name, rate_amount: parseFloat(amount), reference_number: refNum || null });
+    setName(''); setAmount(''); setRefNum('');
   };
 
   return (
@@ -27,16 +28,24 @@ function ClientRatesSection({ clientId }: { clientId: string }) {
       <h4 className="text-sm font-semibold text-foreground">Custom Rates</h4>
       {rates.map(r => (
         <div key={r.id} className="flex items-center justify-between p-2 rounded bg-muted/50">
-          <span className="text-sm">{r.rate_name}: ${r.rate_amount}/hr</span>
+          <div>
+            <span className="text-sm font-medium">{r.rate_name}: ${r.rate_amount}/hr</span>
+            {r.reference_number && <p className="text-xs text-muted-foreground">{r.reference_number}</p>}
+          </div>
           <Button variant="ghost" size="icon" onClick={() => deleteRate.mutate(r.id)}>
             <Trash2 className="w-3 h-3" />
           </Button>
         </div>
       ))}
-      <div className="flex gap-2">
-        <Input placeholder="Rate name" value={name} onChange={e => setName(e.target.value)} className="text-sm" />
-        <Input type="number" placeholder="$/hr" value={amount} onChange={e => setAmount(e.target.value)} className="w-24 text-sm" />
-        <Button size="sm" onClick={handleAdd}><Plus className="w-3 h-3" /></Button>
+      <div className="space-y-1.5">
+        <div className="flex gap-2">
+          <Input placeholder="Rate name" value={name} onChange={e => setName(e.target.value)} className="text-sm" />
+          <Input type="number" placeholder="$/hr" value={amount} onChange={e => setAmount(e.target.value)} className="w-24 text-sm" />
+        </div>
+        <div className="flex gap-2">
+          <Input placeholder="Ref # (e.g. 04_104_0125_6_1)" value={refNum} onChange={e => setRefNum(e.target.value)} className="text-sm flex-1" />
+          <Button size="sm" onClick={handleAdd}><Plus className="w-3 h-3" /></Button>
+        </div>
       </div>
     </div>
   );
@@ -46,30 +55,59 @@ function FixedShiftsSection({ clientId }: { clientId: string }) {
   const { shifts, addShift, deleteShift } = useFixedShifts(clientId);
   const [day, setDay] = useState('1');
   const [hours, setHours] = useState('');
+  const [hourlyRate, setHourlyRate] = useState('');
+  const [mileage, setMileage] = useState('');
+  const [mileageRate, setMileageRate] = useState('');
+  const [refNum, setRefNum] = useState('');
 
   const handleAdd = () => {
     if (!hours) return;
-    addShift.mutate({ client_id: clientId, day_of_week: parseInt(day), default_hours: parseFloat(hours), rate_id: null, rate_name: null, notes: null });
-    setHours('');
+    addShift.mutate({
+      client_id: clientId,
+      day_of_week: parseInt(day),
+      default_hours: parseFloat(hours),
+      rate_id: null,
+      rate_name: null,
+      notes: null,
+      hourly_rate: hourlyRate ? parseFloat(hourlyRate) : null,
+      mileage: mileage ? parseFloat(mileage) : null,
+      mileage_rate: mileageRate ? parseFloat(mileageRate) : null,
+      reference_number: refNum || null,
+    });
+    setHours(''); setHourlyRate(''); setMileage(''); setMileageRate(''); setRefNum('');
   };
 
   return (
     <div className="space-y-2">
       <h4 className="text-sm font-semibold text-foreground">Fixed Weekly Shifts</h4>
       {shifts.map(s => (
-        <div key={s.id} className="flex items-center justify-between p-2 rounded bg-muted/50">
-          <span className="text-sm">{DAY_NAMES[s.day_of_week]}: {s.default_hours}hrs</span>
-          <Button variant="ghost" size="icon" onClick={() => deleteShift.mutate(s.id)}>
-            <Trash2 className="w-3 h-3" />
-          </Button>
+        <div key={s.id} className="p-2 rounded bg-muted/50">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium">{DAY_NAMES[s.day_of_week]}: {s.default_hours}hrs
+              {s.hourly_rate ? ` · $${s.hourly_rate}/hr` : ''}
+              {s.mileage ? ` · ${s.mileage}km` : ''}
+            </span>
+            <Button variant="ghost" size="icon" onClick={() => deleteShift.mutate(s.id)}>
+              <Trash2 className="w-3 h-3" />
+            </Button>
+          </div>
+          {s.reference_number && <p className="text-xs text-muted-foreground mt-0.5">{s.reference_number}</p>}
         </div>
       ))}
-      <div className="flex gap-2">
-        <select value={day} onChange={e => setDay(e.target.value)} className="rounded-md border border-input bg-background px-3 py-2 text-sm">
-          {DAY_NAMES.map((d, i) => <option key={i} value={i}>{d}</option>)}
-        </select>
-        <Input type="number" placeholder="Hours" value={hours} onChange={e => setHours(e.target.value)} className="w-24 text-sm" />
-        <Button size="sm" onClick={handleAdd}><Plus className="w-3 h-3" /></Button>
+      <div className="space-y-1.5 pt-1">
+        <div className="flex gap-2">
+          <select value={day} onChange={e => setDay(e.target.value)} className="rounded-md border border-input bg-background px-3 py-2 text-sm">
+            {DAY_NAMES.map((d, i) => <option key={i} value={i}>{d}</option>)}
+          </select>
+          <Input type="number" placeholder="Hours" value={hours} onChange={e => setHours(e.target.value)} className="w-24 text-sm" />
+          <Input type="number" placeholder="$/hr" value={hourlyRate} onChange={e => setHourlyRate(e.target.value)} className="w-20 text-sm" />
+        </div>
+        <div className="flex gap-2">
+          <Input type="number" placeholder="km" value={mileage} onChange={e => setMileage(e.target.value)} className="w-20 text-sm" />
+          <Input type="number" placeholder="$/km" value={mileageRate} onChange={e => setMileageRate(e.target.value)} className="w-20 text-sm" />
+          <Input placeholder="Ref #" value={refNum} onChange={e => setRefNum(e.target.value)} className="text-sm flex-1" />
+          <Button size="sm" onClick={handleAdd}><Plus className="w-3 h-3" /></Button>
+        </div>
       </div>
     </div>
   );

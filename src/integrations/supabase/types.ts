@@ -21,6 +21,7 @@ export type Database = {
           id: string
           rate_amount: number
           rate_name: string
+          reference_number: string | null
         }
         Insert: {
           client_id: string
@@ -28,6 +29,7 @@ export type Database = {
           id?: string
           rate_amount: number
           rate_name: string
+          reference_number?: string | null
         }
         Update: {
           client_id?: string
@@ -35,6 +37,7 @@ export type Database = {
           id?: string
           rate_amount?: number
           rate_name?: string
+          reference_number?: string | null
         }
         Relationships: [
           {
@@ -97,30 +100,45 @@ export type Database = {
           created_at: string
           day_of_week: number
           default_hours: number
+          expenses: string | null
+          hourly_rate: number | null
           id: string
+          mileage: number | null
+          mileage_rate: number | null
           notes: string | null
           rate_id: string | null
           rate_name: string | null
+          reference_number: string | null
         }
         Insert: {
           client_id: string
           created_at?: string
           day_of_week: number
           default_hours: number
+          expenses?: string | null
+          hourly_rate?: number | null
           id?: string
+          mileage?: number | null
+          mileage_rate?: number | null
           notes?: string | null
           rate_id?: string | null
           rate_name?: string | null
+          reference_number?: string | null
         }
         Update: {
           client_id?: string
           created_at?: string
           day_of_week?: number
           default_hours?: number
+          expenses?: string | null
+          hourly_rate?: number | null
           id?: string
+          mileage?: number | null
+          mileage_rate?: number | null
           notes?: string | null
           rate_id?: string | null
           rate_name?: string | null
+          reference_number?: string | null
         }
         Relationships: [
           {
@@ -155,6 +173,7 @@ export type Database = {
           km: number
           km_rate: number
           rate_name: string | null
+          reference_number: string | null
           shift_date: string
           shift_total: number
           sort_order: number
@@ -174,6 +193,7 @@ export type Database = {
           km?: number
           km_rate?: number
           rate_name?: string | null
+          reference_number?: string | null
           shift_date: string
           shift_total?: number
           sort_order?: number
@@ -193,6 +213,7 @@ export type Database = {
           km?: number
           km_rate?: number
           rate_name?: string | null
+          reference_number?: string | null
           shift_date?: string
           shift_total?: number
           sort_order?: number

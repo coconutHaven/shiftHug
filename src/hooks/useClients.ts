@@ -7,6 +7,7 @@ export interface ClientRate {
   client_id: string;
   rate_name: string;
   rate_amount: number;
+  reference_number?: string | null;
 }
 
 export interface FixedShift {
@@ -17,6 +18,11 @@ export interface FixedShift {
   rate_id: string | null;
   rate_name: string | null;
   notes: string | null;
+  hourly_rate?: number | null;
+  mileage?: number | null;
+  mileage_rate?: number | null;
+  expenses?: string | null;
+  reference_number?: string | null;
 }
 
 export interface Client {
