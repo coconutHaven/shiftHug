@@ -15,6 +15,7 @@ export interface InvoiceShift {
   hours: number;
   hourly_rate: number;
   rate_name: string;
+  reference_number?: string | null;
   km: number;
   km_rate: number;
   expenses: Expense[];
@@ -59,27 +60,31 @@ export function useInvoices(clientId?: string) {
     enabled: !!user,
   });
 
-  const getNextInvoiceNumber = async (): Promise<number> => {
+  const getNextInvoiceNumber = async (clientId: string): Promise<number> => {
     const { data } = await supabase
       .from('invoices')
       .select('invoice_number')
+      .eq('client_id', clientId)
       .order('invoice_number', { ascending: false })
       .limit(1);
+
     return (data?.[0]?.invoice_number ?? 0) + 1;
   };
 
   const createInvoice = useMutation({
     mutationFn: async (invoice: { client_id: string; invoice_date: string; shifts: InvoiceShift[] }) => {
-      const invoiceNumber = await getNextInvoiceNumber();
+      const invoiceNumber = await getNextInvoiceNumber(invoice.client_id);
       const totalAmount = invoice.shifts.reduce((sum, s) => sum + s.invoice_amount, 0);
-
+      const formattedDate = new Date(invoice.invoice_date)
+        .toISOString()
+        .split("T")[0];
       const { data, error } = await supabase
         .from('invoices')
         .insert({
           user_id: user!.id,
           client_id: invoice.client_id,
           invoice_number: invoiceNumber,
-          invoice_date: invoice.invoice_date,
+          invoice_date: formattedDate,
           total_amount: totalAmount,
           status: 'draft',
         })
@@ -94,6 +99,7 @@ export function useInvoices(clientId?: string) {
         hours: s.hours,
         hourly_rate: s.hourly_rate,
         rate_name: s.rate_name || 'Standard',
+        reference_number: s.reference_number ?? null,
         km: s.km,
         km_rate: s.km_rate,
         expenses: JSON.stringify(s.expenses),
@@ -111,6 +117,20 @@ export function useInvoices(clientId?: string) {
       return data;
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['invoices'] }),
+  });
+
+  const deleteDraft = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase
+        .from('invoices')
+        .delete()
+        .eq('id', id)
+        .eq('status', 'draft');
+
+      if (error) throw error;
+    },
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ['invoices'] }),
   });
 
   const publishInvoice = useMutation({
@@ -135,6 +155,7 @@ export function useInvoices(clientId?: string) {
     createInvoice,
     publishInvoice,
     updateInvoice,
+    deleteDraft,
     getNextInvoiceNumber,
   };
 }
