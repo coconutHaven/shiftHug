@@ -1,7 +1,9 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { useInvoices, InvoiceShift, Expense } from '@/hooks/useInvoices';
 import { useClients } from '@/hooks/useClients';
+import type { Client } from '@/hooks/useClients';
 import { useUserSettings } from '@/hooks/useUserSettings';
+import type { UserSettings } from '@/hooks/useUserSettings';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { FileText, Download, CheckCircle, ArrowLeft, Trash2, Info, Pencil } from 'lucide-react';
@@ -25,33 +27,84 @@ const REFERENCE_DESCRIPTIONS: Record<string, string> = {
   '04_210_0125_6_3': 'Assistance with Personal Activities — Evening — Saturday',
 };
 
-const PDF_BRAND: [number, number, number] = [230, 126, 34];
-const PDF_MUTED_ROW: [number, number, number] = [248, 248, 248];
+const APP_NAME = 'shiftHug';
+
+/** Ocean Breeze–aligned PDF palette (teal / slate, print-friendly) */
+const Pdf = {
+  primary: [22, 101, 120] as [number, number, number],
+  primaryDark: [15, 76, 92] as [number, number, number],
+  accentSoft: [232, 246, 249] as [number, number, number],
+  text: [30, 41, 59] as [number, number, number],
+  muted: [100, 116, 139] as [number, number, number],
+  border: [226, 232, 240] as [number, number, number],
+  stripe: [248, 250, 252] as [number, number, number],
+};
 
 type DocWithTable = jsPDF & { lastAutoTable?: { finalY: number } };
 
-function pdfPartyTable(
-  doc: jsPDF,
-  title: string,
-  rows: [string, string][],
-  startY: number
-): number {
-  const body = rows.filter(([, v]) => v != null && String(v).trim() !== '');
-  if (body.length === 0) body.push(['—', '—']);
-  autoTable(doc, {
-    startY,
-    head: [[{ content: title, colSpan: 2, styles: { fillColor: PDF_BRAND, textColor: 255, fontStyle: 'bold', halign: 'left' } }]],
-    body,
-    theme: 'grid',
-    styles: { fontSize: 9, cellPadding: 3, valign: 'middle' },
-    headStyles: { fillColor: PDF_BRAND },
-    columnStyles: {
-      0: { cellWidth: 40, fontStyle: 'bold', fillColor: PDF_MUTED_ROW, textColor: [55, 55, 55] },
-      1: { cellWidth: 130 },
-    },
-    margin: { left: 14, right: 14 },
-  });
-  return ((doc as DocWithTable).lastAutoTable?.finalY ?? startY) + 10;
+const PDF_MARGIN = 14;
+
+function addPdfBrandHeader(doc: jsPDF, titleRight: string, rightLines: string[]): number {
+  const pageW = doc.internal.pageSize.getWidth();
+  const m = PDF_MARGIN;
+  doc.setFillColor(...Pdf.primary);
+  doc.rect(0, 0, pageW, 3.5, 'F');
+  const y0 = 11;
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(17);
+  doc.setTextColor(...Pdf.primaryDark);
+  doc.text(APP_NAME, m, y0);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.setTextColor(...Pdf.muted);
+  doc.text('NDIS support invoicing', m, y0 + 4.5);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
+  doc.setTextColor(...Pdf.text);
+  doc.text(titleRight, pageW - m, y0, { align: 'right' });
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.setTextColor(...Pdf.muted);
+  let ry = y0 + 5;
+  for (const line of rightLines) {
+    doc.text(line, pageW - m, ry, { align: 'right' });
+    ry += 4;
+  }
+  const headerBottom = Math.max(y0 + 12, ry + 2);
+  doc.setDrawColor(...Pdf.border);
+  doc.setLineWidth(0.15);
+  doc.line(m, headerBottom, pageW - m, headerBottom);
+  return headerBottom + 6;
+}
+
+function addPdfFooter(doc: jsPDF) {
+  const pageH = doc.internal.pageSize.getHeight();
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7);
+  doc.setTextColor(...Pdf.muted);
+  doc.text(`Generated in ${APP_NAME}.`, PDF_MARGIN, pageH - 8);
+}
+
+function providerPartyText(settings: UserSettings | null | undefined): string {
+  const lines = [
+    settings?.display_name,
+    settings?.email,
+    settings?.phone ? `${settings.phone}` : '',
+    settings?.abn ? `ABN: ${settings.abn}` : '',
+    settings?.bsb ? `BSB: ${settings.bsb}` : '',
+    settings?.account_number ? `Account number: ${settings.account_number}` : '',
+  ].filter((v): v is string => Boolean(v && String(v).trim()));
+  return lines.length ? lines.join('\n') : '—';
+}
+
+function clientPartyText(client: Client | null | undefined): string {
+  const lines = [
+    client?.name,
+    client?.address,
+    client?.email,
+    client?.phone ? `${client.phone}` : '',
+  ].filter((v): v is string => Boolean(v && String(v).trim()));
+  return lines.length ? lines.join('\n') : '—';
 }
 
 export default function InvoiceDetail() {
@@ -90,51 +143,46 @@ export default function InvoiceDetail() {
   };
 
   const generateCalculationsPDF = () => {
-    const doc = new jsPDF();
-    let y = 14;
-
-    doc.setFontSize(18);
-    doc.setTextColor(45, 45, 45);
-    doc.text('SupportMate', 14, y);
-    y += 8;
-    doc.setFontSize(11);
-    doc.setTextColor(100, 100, 100);
-    doc.text(`Calculations — Invoice #${String(invoice.invoice_number).padStart(3, '0')}`, 14, y);
-    y += 12;
-
-    y = pdfPartyTable(doc, 'Service provider', [
-      ['Name', settings?.display_name ?? ''],
-      ['Email', settings?.email ?? ''],
-      ['Phone', settings?.phone ?? ''],
-      ['ABN', settings?.abn ?? ''],
-      ['BSB', settings?.bsb ?? ''],
-      ['Account', settings?.account_number ?? ''],
-    ], y);
-
-    y = pdfPartyTable(doc, 'Bill to (participant)', [
-      ['Name', client?.name ?? ''],
-      ['Email', client?.email ?? ''],
-      ['Phone', client?.phone ?? ''],
-      ['Address', client?.address ?? ''],
-    ], y);
+    const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+    const invNo = String(invoice.invoice_number).padStart(3, '0');
+    let y = addPdfBrandHeader(doc, 'SUPPORTING CALCULATIONS', [`Invoice no. ${invNo}`, `Date ${invoice.invoice_date}`]);
 
     autoTable(doc, {
       startY: y,
-      head: [[{ content: 'Invoice details', colSpan: 2, styles: { fillColor: PDF_BRAND, textColor: 255, fontStyle: 'bold' } }]],
-      body: [
-        ['Invoice #', String(invoice.invoice_number).padStart(3, '0')],
-        ['Invoice date', invoice.invoice_date],
-        ['Service', client?.service_description ?? '—'],
-      ],
-      theme: 'grid',
-      styles: { fontSize: 9, cellPadding: 3 },
-      columnStyles: {
-        0: { cellWidth: 40, fontStyle: 'bold', fillColor: PDF_MUTED_ROW },
-        1: { cellWidth: 130 },
+      head: [['FROM (SERVICE PROVIDER)', 'BILL TO (PARTICIPANT)']],
+      body: [[providerPartyText(settings), clientPartyText(client)]],
+      headStyles: {
+        fillColor: Pdf.accentSoft,
+        textColor: Pdf.primaryDark,
+        fontStyle: 'bold',
+        fontSize: 7,
+        halign: 'left',
       },
-      margin: { left: 14, right: 14 },
+      bodyStyles: { fontSize: 9, textColor: Pdf.text, valign: 'top', minCellHeight: 22 },
+      styles: { lineColor: Pdf.border, lineWidth: 0.1, cellPadding: 3.5 },
+      theme: 'plain',
+      margin: { left: PDF_MARGIN, right: PDF_MARGIN },
     });
-    y = ((doc as DocWithTable).lastAutoTable?.finalY ?? y) + 12;
+    y = ((doc as DocWithTable).lastAutoTable?.finalY ?? y) + 8;
+
+    autoTable(doc, {
+      startY: y,
+      head: [['DOCUMENT SUMMARY']],
+      body: [
+        ['Invoice number', invNo],
+        ['Issue date', invoice.invoice_date],
+        ['Support described', client?.service_description ?? '—'],
+      ],
+      headStyles: { fillColor: Pdf.accentSoft, textColor: Pdf.primaryDark, fontStyle: 'bold', fontSize: 7, halign: 'left' },
+      columnStyles: {
+        0: { cellWidth: 42, fontStyle: 'bold', textColor: Pdf.muted, fontSize: 8 },
+        1: { cellWidth: 140 },
+      },
+      styles: { fontSize: 9, textColor: Pdf.text, lineColor: Pdf.border, lineWidth: 0.1, cellPadding: 2.5 },
+      theme: 'plain',
+      margin: { left: PDF_MARGIN, right: PDF_MARGIN },
+    });
+    y = ((doc as DocWithTable).lastAutoTable?.finalY ?? y) + 8;
 
     const tableData = shifts.map(s => {
       const rateLabel = s.rate_name && s.rate_name !== 'Standard' ? `${s.rate_name} · ` : '';
@@ -145,74 +193,76 @@ export default function InvoiceDetail() {
         : '—';
       return [s.day_name, s.shift_date, hoursStr, kmStr, expStr, `$${s.shift_total.toFixed(2)}`];
     });
-
-    tableData.push(['TOTAL', '', '', '', '', `$${shifts.reduce((s, sh) => s + sh.shift_total, 0).toFixed(2)}`]);
+    const calcGrand = shifts.reduce((s, sh) => s + sh.shift_total, 0);
+    tableData.push(['TOTAL', '', '', '', '', `$${calcGrand.toFixed(2)}`]);
+    const calcBodyRows = tableData.length;
 
     autoTable(doc, {
-      head: [['Day', 'Date', 'Hours & rate', 'Mileage', 'Expenses', 'Amount']],
+      head: [['Day', 'Date', 'Hours & rate', 'Travel', 'Expenses', 'Amount (AUD)']],
       body: tableData,
       startY: y,
-      styles: { fontSize: 8, cellPadding: 2.5, valign: 'top' },
-      headStyles: { fillColor: PDF_BRAND, textColor: 255, fontStyle: 'bold' },
+      styles: { fontSize: 7.5, cellPadding: 2, valign: 'top', lineColor: Pdf.border, lineWidth: 0.1 },
+      headStyles: { fillColor: Pdf.primaryDark, textColor: 255, fontStyle: 'bold', fontSize: 8 },
       columnStyles: {
         0: { cellWidth: 18 },
-        1: { cellWidth: 22 },
-        2: { cellWidth: 52 },
-        3: { cellWidth: 38 },
-        4: { cellWidth: 38 },
-        5: { cellWidth: 22, halign: 'right' },
+        1: { cellWidth: 24 },
+        2: { cellWidth: 54 },
+        3: { cellWidth: 30 },
+        4: { cellWidth: 36 },
+        5: { cellWidth: 20, halign: 'right' },
       },
-      margin: { left: 14, right: 14 },
+      margin: { left: PDF_MARGIN, right: PDF_MARGIN },
+      didParseCell: data => {
+        if (data.section === 'body' && data.row.index === calcBodyRows - 1) {
+          data.cell.styles.fontStyle = 'bold';
+          data.cell.styles.fillColor = [...Pdf.accentSoft];
+          data.cell.styles.textColor = [...Pdf.primaryDark];
+        } else if (data.section === 'body' && data.row.index % 2 === 1) {
+          data.cell.styles.fillColor = [...Pdf.stripe];
+        }
+      },
     });
+    y = ((doc as DocWithTable).lastAutoTable?.finalY ?? y) + 8;
 
-    doc.save(`Invoice_${String(invoice.invoice_number).padStart(3, '0')}_Calculations.pdf`);
+    addPdfFooter(doc);
+    doc.save(`Invoice_${invNo}_Calculations.pdf`);
   };
 
   const generateInvoicePDF = () => {
-    const doc = new jsPDF();
-    let y = 14;
-
-    doc.setFontSize(18);
-    doc.setTextColor(45, 45, 45);
-    doc.text('SupportMate', 14, y);
-    y += 8;
-    doc.setFontSize(14);
-    doc.text('Invoice', 14, y);
-    y += 6;
-    doc.setFontSize(10);
-    doc.setTextColor(100, 100, 100);
-    doc.text(`#${String(invoice.invoice_number).padStart(3, '0')} · ${invoice.invoice_date}`, 14, y);
-    y += 14;
-
-    y = pdfPartyTable(doc, 'From (service provider)', [
-      ['Name', settings?.display_name ?? ''],
-      ['Email', settings?.email ?? ''],
-      ['Phone', settings?.phone ?? ''],
-      ['ABN', settings?.abn ?? ''],
-      ['BSB', settings?.bsb ?? ''],
-      ['Account no.', settings?.account_number ?? ''],
-    ], y);
-
-    y = pdfPartyTable(doc, 'To (participant)', [
-      ['Name', client?.name ?? ''],
-      ['Address', client?.address ?? ''],
-      ['Email', client?.email ?? ''],
-      ['Phone', client?.phone ?? ''],
-    ], y);
+    const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+    const invNo = String(invoice.invoice_number).padStart(3, '0');
+    const pageW = doc.internal.pageSize.getWidth();
+    const contentW = pageW - PDF_MARGIN * 2;
+    let y = addPdfBrandHeader(doc, 'INVOICE', [`Invoice no. ${invNo}`, `Date issued ${invoice.invoice_date}`]);
 
     autoTable(doc, {
       startY: y,
-      head: [[{ content: 'Service', colSpan: 2, styles: { fillColor: PDF_BRAND, textColor: 255, fontStyle: 'bold' } }]],
-      body: [['Description', client?.service_description ?? '—']],
-      theme: 'grid',
-      styles: { fontSize: 9, cellPadding: 3 },
-      columnStyles: {
-        0: { cellWidth: 40, fontStyle: 'bold', fillColor: PDF_MUTED_ROW },
-        1: { cellWidth: 130 },
+      head: [['FROM', 'BILL TO']],
+      body: [[providerPartyText(settings), clientPartyText(client)]],
+      headStyles: {
+        fillColor: Pdf.accentSoft,
+        textColor: Pdf.primaryDark,
+        fontStyle: 'bold',
+        fontSize: 7,
+        halign: 'left',
       },
-      margin: { left: 14, right: 14 },
+      bodyStyles: { fontSize: 9, textColor: Pdf.text, valign: 'top', minCellHeight: 24 },
+      styles: { lineColor: Pdf.border, lineWidth: 0.1, cellPadding: 3.5 },
+      theme: 'plain',
+      margin: { left: PDF_MARGIN, right: PDF_MARGIN },
     });
-    y = ((doc as DocWithTable).lastAutoTable?.finalY ?? y) + 12;
+    y = ((doc as DocWithTable).lastAutoTable?.finalY ?? y) + 8;
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(...Pdf.muted);
+    doc.text('Description of support', PDF_MARGIN, y);
+    y += 5;
+    doc.setFontSize(9);
+    doc.setTextColor(...Pdf.text);
+    const descLines = doc.splitTextToSize(client?.service_description ?? '—', contentW);
+    doc.text(descLines, PDF_MARGIN, y);
+    y += descLines.length * 4.2 + 8;
 
     const tableData = shifts.map(s => [
       s.shift_date,
@@ -223,28 +273,39 @@ export default function InvoiceDetail() {
       `$${s.invoice_rate}`,
       `$${s.invoice_amount.toFixed(2)}`,
     ]);
-
     tableData.push(['Total', '', '', '', '', '', `$${Number(invoice.total_amount).toFixed(2)}`]);
+    const invBodyRows = tableData.length;
 
     autoTable(doc, {
-      head: [['Date', 'Description', 'Ref #', 'Rate', 'Hrs', '$/Hr', 'Amount']],
+      head: [['Date', 'Description', 'Support item / ref.', 'Rate', 'Hours', '$ / hr', 'Amount (AUD)']],
       body: tableData,
       startY: y,
-      styles: { fontSize: 8, cellPadding: 2.5 },
-      headStyles: { fillColor: PDF_BRAND, textColor: 255, fontStyle: 'bold' },
+      styles: { fontSize: 7.5, cellPadding: 2, lineColor: Pdf.border, lineWidth: 0.1 },
+      headStyles: { fillColor: Pdf.primaryDark, textColor: 255, fontStyle: 'bold', fontSize: 8 },
       columnStyles: {
-        0: { cellWidth: 22 },
-        1: { cellWidth: 42 },
-        2: { cellWidth: 32 },
-        3: { cellWidth: 24 },
-        4: { halign: 'right', cellWidth: 16 },
-        5: { halign: 'right', cellWidth: 18 },
-        6: { halign: 'right', cellWidth: 22 },
+        0: { cellWidth: 24 },
+        1: { cellWidth: 48 },
+        2: { cellWidth: 34 },
+        3: { cellWidth: 22 },
+        4: { halign: 'right', cellWidth: 14 },
+        5: { halign: 'right', cellWidth: 16 },
+        6: { halign: 'right', cellWidth: 24 },
       },
-      margin: { left: 14, right: 14 },
+      margin: { left: PDF_MARGIN, right: PDF_MARGIN },
+      didParseCell: data => {
+        if (data.section === 'body' && data.row.index === invBodyRows - 1) {
+          data.cell.styles.fontStyle = 'bold';
+          data.cell.styles.fillColor = [...Pdf.accentSoft];
+          data.cell.styles.textColor = [...Pdf.primaryDark];
+        } else if (data.section === 'body' && data.row.index % 2 === 1) {
+          data.cell.styles.fillColor = [...Pdf.stripe];
+        }
+      },
     });
+    y = ((doc as DocWithTable).lastAutoTable?.finalY ?? y) + 8;
 
-    doc.save(`Invoice_${String(invoice.invoice_number).padStart(3, '0')}.pdf`);
+    addPdfFooter(doc);
+    doc.save(`Invoice_${invNo}.pdf`);
   };
 
   return (

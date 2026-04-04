@@ -7,7 +7,10 @@ interface ThemeContextType {
   setTheme: (theme: ThemeOption) => void;
 }
 
-const ThemeContext = createContext<ThemeContextType>({ theme: 'warm-sunset', setTheme: () => {} });
+const THEME_STORAGE_KEY = 'shifthug-theme';
+const LEGACY_THEME_KEY = 'ndis-theme';
+
+const ThemeContext = createContext<ThemeContextType>({ theme: 'ocean', setTheme: () => {} });
 
 export const themes: { id: ThemeOption; name: string; color: string }[] = [
   { id: 'warm-sunset', name: 'Warm Sunset', color: '#e07830' },
@@ -17,13 +20,19 @@ export const themes: { id: ThemeOption; name: string; color: string }[] = [
   { id: 'rosy', name: 'Rosy Blush', color: '#d14d72' },
 ];
 
+function readStoredTheme(): ThemeOption {
+  const raw =
+    localStorage.getItem(THEME_STORAGE_KEY) ?? localStorage.getItem(LEGACY_THEME_KEY);
+  const ids: ThemeOption[] = ['warm-sunset', 'ocean', 'garden', 'lavender', 'rosy'];
+  if (raw && ids.includes(raw as ThemeOption)) return raw as ThemeOption;
+  return 'ocean';
+}
+
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setTheme] = useState<ThemeOption>(() => {
-    return (localStorage.getItem('ndis-theme') as ThemeOption) || 'warm-sunset';
-  });
+  const [theme, setTheme] = useState<ThemeOption>(readStoredTheme);
 
   useEffect(() => {
-    localStorage.setItem('ndis-theme', theme);
+    localStorage.setItem(THEME_STORAGE_KEY, theme);
     const root = document.documentElement;
     root.classList.remove('theme-ocean', 'theme-garden', 'theme-lavender', 'theme-rosy');
     if (theme !== 'warm-sunset') {

@@ -419,5 +419,5 @@ if (process.env.NODE_ENV === 'production') {
 
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
-  console.log(`SupportMate API running on http://localhost:${PORT}`);
+  console.log(`shiftHug API running on http://localhost:${PORT}`);
 });

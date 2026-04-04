@@ -36,7 +36,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
               <div className="w-9 h-9 rounded-xl gradient-primary flex items-center justify-center">
                 <Heart className="w-5 h-5 text-primary-foreground" />
               </div>
-              <span className="font-heading font-bold text-lg text-foreground hidden sm:inline">SupportMate</span>
+              <span className="font-heading font-bold text-lg text-foreground hidden sm:inline tracking-tight">shiftHug</span>
             </Link>
           </div>
 
