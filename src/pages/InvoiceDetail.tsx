@@ -44,6 +44,10 @@ type DocWithTable = jsPDF & { lastAutoTable?: { finalY: number } };
 
 const PDF_MARGIN = 14;
 
+function pdfInnerWidthMm(doc: jsPDF): number {
+  return doc.internal.pageSize.getWidth() - PDF_MARGIN * 2;
+}
+
 function addPdfBrandHeader(doc: jsPDF, titleRight: string, rightLines: string[]): number {
   const pageW = doc.internal.pageSize.getWidth();
   const m = PDF_MARGIN;
@@ -147,9 +151,11 @@ export default function InvoiceDetail() {
     const invNo = String(invoice.invoice_number).padStart(3, '0');
     let y = addPdfBrandHeader(doc, 'SUPPORTING CALCULATIONS', [`Invoice no. ${invNo}`, `Date ${invoice.invoice_date}`]);
 
+    const innerW = pdfInnerWidthMm(doc);
     autoTable(doc, {
       startY: y,
-      head: [['FROM (SERVICE PROVIDER)', 'BILL TO (PARTICIPANT)']],
+      tableWidth: innerW,
+      head: [['FROM', 'BILL TO']],
       body: [[providerPartyText(settings), clientPartyText(client)]],
       headStyles: {
         fillColor: Pdf.accentSoft,
@@ -160,25 +166,7 @@ export default function InvoiceDetail() {
       },
       bodyStyles: { fontSize: 9, textColor: Pdf.text, valign: 'top', minCellHeight: 22 },
       styles: { lineColor: Pdf.border, lineWidth: 0.1, cellPadding: 3.5 },
-      theme: 'plain',
-      margin: { left: PDF_MARGIN, right: PDF_MARGIN },
-    });
-    y = ((doc as DocWithTable).lastAutoTable?.finalY ?? y) + 8;
-
-    autoTable(doc, {
-      startY: y,
-      head: [['DOCUMENT SUMMARY']],
-      body: [
-        ['Invoice number', invNo],
-        ['Issue date', invoice.invoice_date],
-        ['Support described', client?.service_description ?? '—'],
-      ],
-      headStyles: { fillColor: Pdf.accentSoft, textColor: Pdf.primaryDark, fontStyle: 'bold', fontSize: 7, halign: 'left' },
-      columnStyles: {
-        0: { cellWidth: 42, fontStyle: 'bold', textColor: Pdf.muted, fontSize: 8 },
-        1: { cellWidth: 140 },
-      },
-      styles: { fontSize: 9, textColor: Pdf.text, lineColor: Pdf.border, lineWidth: 0.1, cellPadding: 2.5 },
+      columnStyles: { 0: { cellWidth: innerW / 2 }, 1: { cellWidth: innerW / 2 } },
       theme: 'plain',
       margin: { left: PDF_MARGIN, right: PDF_MARGIN },
     });
@@ -198,6 +186,7 @@ export default function InvoiceDetail() {
     const calcBodyRows = tableData.length;
 
     autoTable(doc, {
+      tableWidth: innerW,
       head: [['Day', 'Date', 'Hours & rate', 'Travel', 'Expenses', 'Amount (AUD)']],
       body: tableData,
       startY: y,
@@ -209,7 +198,7 @@ export default function InvoiceDetail() {
         2: { cellWidth: 54 },
         3: { cellWidth: 30 },
         4: { cellWidth: 36 },
-        5: { cellWidth: 20, halign: 'right' },
+        5: { cellWidth: innerW - 18 - 24 - 54 - 30 - 36, halign: 'right' },
       },
       margin: { left: PDF_MARGIN, right: PDF_MARGIN },
       didParseCell: data => {
@@ -231,12 +220,11 @@ export default function InvoiceDetail() {
   const generateInvoicePDF = () => {
     const doc = new jsPDF({ unit: 'mm', format: 'a4' });
     const invNo = String(invoice.invoice_number).padStart(3, '0');
-    const pageW = doc.internal.pageSize.getWidth();
-    const contentW = pageW - PDF_MARGIN * 2;
+    const innerW = pdfInnerWidthMm(doc);
     let y = addPdfBrandHeader(doc, 'INVOICE', [`Invoice no. ${invNo}`, `Date issued ${invoice.invoice_date}`]);
-
     autoTable(doc, {
       startY: y,
+      tableWidth: innerW,
       head: [['FROM', 'BILL TO']],
       body: [[providerPartyText(settings), clientPartyText(client)]],
       headStyles: {
@@ -248,6 +236,7 @@ export default function InvoiceDetail() {
       },
       bodyStyles: { fontSize: 9, textColor: Pdf.text, valign: 'top', minCellHeight: 24 },
       styles: { lineColor: Pdf.border, lineWidth: 0.1, cellPadding: 3.5 },
+      columnStyles: { 0: { cellWidth: innerW / 2 }, 1: { cellWidth: innerW / 2 } },
       theme: 'plain',
       margin: { left: PDF_MARGIN, right: PDF_MARGIN },
     });
@@ -260,7 +249,7 @@ export default function InvoiceDetail() {
     y += 5;
     doc.setFontSize(9);
     doc.setTextColor(...Pdf.text);
-    const descLines = doc.splitTextToSize(client?.service_description ?? '—', contentW);
+    const descLines = doc.splitTextToSize(client?.service_description ?? '—', innerW);
     doc.text(descLines, PDF_MARGIN, y);
     y += descLines.length * 4.2 + 8;
 
@@ -268,28 +257,35 @@ export default function InvoiceDetail() {
       s.shift_date,
       client?.service_description ?? '',
       s.reference_number || client?.ref_number || '',
-      s.rate_name || 'Standard',
       s.invoice_hours.toFixed(2),
-      `$${s.invoice_rate}`,
+      `$${s.hourly_rate}`,
       `$${s.invoice_amount.toFixed(2)}`,
     ]);
-    tableData.push(['Total', '', '', '', '', '', `$${Number(invoice.total_amount).toFixed(2)}`]);
+    tableData.push(['Total', '', '', '', '', `$${Number(invoice.total_amount).toFixed(2)}`]);
     const invBodyRows = tableData.length;
 
+    // Six columns; description uses remaining width so the table matches page margins.
+    const c0 = 22;
+    const c2 = 34;
+    const c3 = 14;
+    const c4 = 18;
+    const c5 = 24;
+    const c1 = innerW - c0 - c2 - c3 - c4 - c5;
+
     autoTable(doc, {
-      head: [['Date', 'Description', 'Support item / ref.', 'Rate', 'Hours', '$ / hr', 'Amount (AUD)']],
+      tableWidth: innerW,
+      head: [['Date', 'Description', 'Support item / ref.', 'Hours', 'Rate', 'Amount (AUD)']],
       body: tableData,
       startY: y,
-      styles: { fontSize: 7.5, cellPadding: 2, lineColor: Pdf.border, lineWidth: 0.1 },
+      styles: { fontSize: 7.5, cellPadding: 2, lineColor: Pdf.border, lineWidth: 0.1, overflow: 'linebreak' },
       headStyles: { fillColor: Pdf.primaryDark, textColor: 255, fontStyle: 'bold', fontSize: 8 },
       columnStyles: {
-        0: { cellWidth: 24 },
-        1: { cellWidth: 48 },
-        2: { cellWidth: 34 },
-        3: { cellWidth: 22 },
-        4: { halign: 'right', cellWidth: 14 },
-        5: { halign: 'right', cellWidth: 16 },
-        6: { halign: 'right', cellWidth: 24 },
+        0: { cellWidth: c0 },
+        1: { cellWidth: c1 },
+        2: { cellWidth: c2 },
+        3: { halign: 'right', cellWidth: c3 },
+        4: { halign: 'right', cellWidth: c4 },
+        5: { halign: 'right', cellWidth: c5 },
       },
       margin: { left: PDF_MARGIN, right: PDF_MARGIN },
       didParseCell: data => {
