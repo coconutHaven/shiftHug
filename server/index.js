@@ -316,6 +316,58 @@ app.put('/api/invoices/:id', (req, res) => {
   res.json({ ok: true });
 });
 
+/** Replace all line items for a draft invoice (full editor save). */
+app.put('/api/invoices/:id/draft', (req, res) => {
+  const inv = db.prepare('SELECT * FROM invoices WHERE id = ?').get(req.params.id);
+  if (!inv) return res.status(404).json({ error: 'Invoice not found' });
+  if (inv.status !== 'draft') return res.status(400).json({ error: 'Only draft invoices can be edited' });
+
+  const { invoice_date, shifts } = req.body;
+  if (!Array.isArray(shifts) || shifts.length === 0) {
+    return res.status(400).json({ error: 'At least one shift is required' });
+  }
+
+  const totalAmount = shifts.reduce((sum, s) => sum + Number(s.invoice_amount), 0);
+  const formattedDate = new Date(invoice_date).toISOString().split('T')[0];
+
+  const insertShift = db.prepare(`
+    INSERT INTO invoice_shifts (id, invoice_id, shift_date, day_name, hours, hourly_rate, rate_name, reference_number, km, km_rate, expenses, expenses_total, shift_total, invoice_hours, invoice_rate, invoice_amount, sort_order)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  const tx = db.transaction(() => {
+    db.prepare('DELETE FROM invoice_shifts WHERE invoice_id = ?').run(req.params.id);
+    shifts.forEach((s, i) => {
+      insertShift.run(
+        randomUUID(),
+        req.params.id,
+        s.shift_date,
+        s.day_name,
+        s.hours,
+        s.hourly_rate,
+        s.rate_name || 'Standard',
+        s.reference_number ?? null,
+        s.km,
+        s.km_rate,
+        JSON.stringify(s.expenses ?? []),
+        s.expenses_total,
+        s.shift_total,
+        s.invoice_hours,
+        s.invoice_rate,
+        s.invoice_amount,
+        i
+      );
+    });
+    db.prepare(
+      'UPDATE invoices SET invoice_date = ?, total_amount = ?, updated_at = datetime(\'now\') WHERE id = ?'
+    ).run(formattedDate, totalAmount, req.params.id);
+  });
+
+  tx();
+  const updated = db.prepare('SELECT * FROM invoices WHERE id = ?').get(req.params.id);
+  res.json(updated);
+});
+
 app.put('/api/invoices/:id/publish', (req, res) => {
   db.prepare("UPDATE invoices SET status = 'published', updated_at = datetime('now') WHERE id = ?").run(req.params.id);
   res.json({ ok: true });
