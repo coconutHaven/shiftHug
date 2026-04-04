@@ -200,6 +200,7 @@ export default function NewInvoice() {
   const [invoiceDate, setInvoiceDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [shifts, setShifts] = useState<InvoiceShift[]>([]);
   const [nextNumber, setNextNumber] = useState(1);
+  const [customNumber, setCustomNumber] = useState<string>('');
   const [weeklyDialogOpen, setWeeklyDialogOpen] = useState(false);
   const [startDate, setStartDate] = useState<Date>();
   const [endDate, setEndDate] = useState<Date>();
@@ -209,11 +210,17 @@ export default function NewInvoice() {
 
   useEffect(() => {
     if (clientId) {
-      getNextInvoiceNumber(clientId).then(setNextNumber);
+      getNextInvoiceNumber(clientId).then(n => {
+        setNextNumber(n);
+        setCustomNumber('');
+      });
     } else {
       setNextNumber(1);
+      setCustomNumber('');
     }
   }, [clientId]);
+
+  const effectiveNumber = customNumber ? parseInt(customNumber) : nextNumber;
 
   const recalcShifts = (newShifts: InvoiceShift[]) => {
     if (!selectedClient) return newShifts;
@@ -263,6 +270,7 @@ export default function NewInvoice() {
         const rate = fs.rate_name && clientRates.find(r => r.rate_name === fs.rate_name);
         const shiftHourlyRate = fs.hourly_rate ?? (rate ? rate.rate_amount : selectedClient.hourly_rate);
         const shiftRefNum = fs.reference_number ?? (rate?.reference_number ?? selectedClient.ref_number ?? null);
+        const fixedExpenses: Expense[] = (fs.expenses ?? []).map((e: any) => ({ name: e.name, amount: e.amount }));
         newShifts.push({
           shift_date: format(day, 'd/M'),
           day_name: DAY_NAMES[dayOfWeek],
@@ -272,7 +280,7 @@ export default function NewInvoice() {
           reference_number: shiftRefNum,
           km: fs.mileage ?? 0,
           km_rate: fs.mileage_rate ?? selectedClient.km_rate,
-          expenses: [], expenses_total: 0, shift_total: 0,
+          expenses: fixedExpenses, expenses_total: 0, shift_total: 0,
           invoice_hours: 0, invoice_rate: selectedClient.hourly_rate, invoice_amount: 0,
           sort_order: shifts.length + newShifts.length,
         });
@@ -294,11 +302,13 @@ export default function NewInvoice() {
       return;
     }
     try {
-      const result = await createInvoice.mutateAsync({
+      const payload: { client_id: string; invoice_date: string; shifts: InvoiceShift[]; invoice_number?: number } = {
         client_id: clientId,
         invoice_date: invoiceDate,
         shifts,
-      });
+      };
+      if (customNumber) payload.invoice_number = parseInt(customNumber);
+      const result = await createInvoice.mutateAsync(payload);
       toast({ title: publish ? 'Invoice published! 🎉' : 'Invoice saved as draft 📝' });
       navigate(`/invoices/${result.id}`);
     } catch (err: any) {
@@ -311,7 +321,7 @@ export default function NewInvoice() {
       <div>
         <h1 className="text-2xl font-bold font-heading text-foreground flex items-center gap-2">
           <FileText className="w-6 h-6 text-primary" />
-          New Invoice <span className="text-muted-foreground">#{String(nextNumber).padStart(3, '0')}</span>
+          New Invoice
         </h1>
         <p className="text-muted-foreground">Date: {format(new Date(), 'dd/MM/yyyy')}</p>
       </div>
@@ -319,7 +329,7 @@ export default function NewInvoice() {
       {/* Client Selection */}
       <Card className="shadow-card">
         <CardContent className="p-4 space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
               <Label>Client</Label>
               <Select value={clientId} onValueChange={setClientId}>
@@ -332,6 +342,16 @@ export default function NewInvoice() {
             <div>
               <Label>Invoice Date</Label>
               <Input type="date" value={invoiceDate} onChange={e => setInvoiceDate(e.target.value)} />
+            </div>
+            <div>
+              <Label>Invoice #</Label>
+              <Input
+                type="number"
+                value={customNumber}
+                onChange={e => setCustomNumber(e.target.value)}
+                placeholder={String(nextNumber)}
+              />
+              <p className="text-xs text-muted-foreground mt-1">Next: {nextNumber}. Override if needed.</p>
             </div>
           </div>
           {selectedClient && (
