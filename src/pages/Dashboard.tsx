@@ -1,19 +1,21 @@
-import { useAuth } from '@/contexts/AuthContext';
 import { useClients } from '@/hooks/useClients';
 import { useInvoices } from '@/hooks/useInvoices';
+import { useUserSettings } from '@/hooks/useUserSettings';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { FileText, Users, Plus, TrendingUp, Heart } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 export default function Dashboard() {
-  const { user } = useAuth();
   const { clients } = useClients();
   const { invoices } = useInvoices();
+  const { settings } = useUserSettings();
 
   const publishedInvoices = invoices.filter(i => i.status === 'published');
   const draftInvoices = invoices.filter(i => i.status === 'draft');
   const totalRevenue = publishedInvoices.reduce((sum, i) => sum + Number(i.total_amount), 0);
+
+  const displayName = settings?.display_name;
 
   return (
     <div className="space-y-8 animate-fade-in">
@@ -21,7 +23,7 @@ export default function Dashboard() {
         <div className="flex items-center gap-3 mb-2">
           <Heart className="w-6 h-6 text-primary" />
           <h1 className="text-2xl font-bold font-heading text-foreground">
-            Welcome back{user?.email ? `, ${user.email.split('@')[0]}` : ''}! 💛
+            Welcome back{displayName ? `, ${displayName}` : ''}!
           </h1>
         </div>
         <p className="text-muted-foreground font-body">Here's your invoicing overview</p>
@@ -99,7 +101,6 @@ export default function Dashboard() {
         </Link>
       </div>
 
-      {/* Recent invoices */}
       {invoices.length > 0 && (
         <Card className="shadow-card">
           <CardHeader>

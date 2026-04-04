@@ -1,13 +1,12 @@
 import { useState } from 'react';
-import { useClients, useClientRates, useFixedShifts } from '@/hooks/useClients';
+import { useClients, useClientRates, useFixedShifts, FixedShiftExpense } from '@/hooks/useClients';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Plus, Trash2, Users, Edit, ChevronDown, ChevronUp } from 'lucide-react';
+import { Plus, Trash2, Users, ChevronDown, ChevronUp, Pencil, Save, X } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { useAuth } from '@/contexts/AuthContext';
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
@@ -51,30 +50,89 @@ function ClientRatesSection({ clientId }: { clientId: string }) {
   );
 }
 
+interface ShiftEditForm {
+  day_of_week: string;
+  default_hours: string;
+  hourly_rate: string;
+  mileage: string;
+  mileage_rate: string;
+  reference_number: string;
+  expenses: FixedShiftExpense[];
+}
+
 function FixedShiftsSection({ clientId }: { clientId: string }) {
-  const { shifts, addShift, deleteShift } = useFixedShifts(clientId);
-  const [day, setDay] = useState('1');
-  const [hours, setHours] = useState('');
-  const [hourlyRate, setHourlyRate] = useState('');
-  const [mileage, setMileage] = useState('');
-  const [mileageRate, setMileageRate] = useState('');
-  const [refNum, setRefNum] = useState('');
+  const { shifts, addShift, updateShift, deleteShift } = useFixedShifts(clientId);
+  const { toast } = useToast();
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState<ShiftEditForm>({
+    day_of_week: '1', default_hours: '', hourly_rate: '', mileage: '', mileage_rate: '', reference_number: '', expenses: [],
+  });
+  const [newExpName, setNewExpName] = useState('');
+  const [newExpAmount, setNewExpAmount] = useState('');
+
+  const [addDay, setAddDay] = useState('1');
+  const [addHours, setAddHours] = useState('');
+  const [addRate, setAddRate] = useState('');
+  const [addMileage, setAddMileage] = useState('');
+  const [addMileageRate, setAddMileageRate] = useState('');
+  const [addRefNum, setAddRefNum] = useState('');
+
+  const startEdit = (s: typeof shifts[0]) => {
+    setEditingId(s.id);
+    setEditForm({
+      day_of_week: String(s.day_of_week),
+      default_hours: String(s.default_hours),
+      hourly_rate: s.hourly_rate != null ? String(s.hourly_rate) : '',
+      mileage: s.mileage != null ? String(s.mileage) : '',
+      mileage_rate: s.mileage_rate != null ? String(s.mileage_rate) : '',
+      reference_number: s.reference_number ?? '',
+      expenses: s.expenses ?? [],
+    });
+    setNewExpName(''); setNewExpAmount('');
+  };
+
+  const cancelEdit = () => setEditingId(null);
+
+  const saveEdit = () => {
+    if (!editingId || !editForm.default_hours) return;
+    updateShift.mutate({
+      id: editingId,
+      day_of_week: parseInt(editForm.day_of_week),
+      default_hours: parseFloat(editForm.default_hours),
+      hourly_rate: editForm.hourly_rate ? parseFloat(editForm.hourly_rate) : null,
+      mileage: editForm.mileage ? parseFloat(editForm.mileage) : null,
+      mileage_rate: editForm.mileage_rate ? parseFloat(editForm.mileage_rate) : null,
+      reference_number: editForm.reference_number || null,
+      expenses: editForm.expenses,
+    });
+    setEditingId(null);
+    toast({ title: 'Shift updated' });
+  };
+
+  const addEditExpense = () => {
+    if (!newExpName || !newExpAmount) return;
+    setEditForm(f => ({ ...f, expenses: [...f.expenses, { name: newExpName, amount: parseFloat(newExpAmount) }] }));
+    setNewExpName(''); setNewExpAmount('');
+  };
+
+  const removeEditExpense = (i: number) => {
+    setEditForm(f => ({ ...f, expenses: f.expenses.filter((_, idx) => idx !== i) }));
+  };
 
   const handleAdd = () => {
-    if (!hours) return;
+    if (!addHours) return;
     addShift.mutate({
       client_id: clientId,
-      day_of_week: parseInt(day),
-      default_hours: parseFloat(hours),
-      rate_id: null,
-      rate_name: null,
-      notes: null,
-      hourly_rate: hourlyRate ? parseFloat(hourlyRate) : null,
-      mileage: mileage ? parseFloat(mileage) : null,
-      mileage_rate: mileageRate ? parseFloat(mileageRate) : null,
-      reference_number: refNum || null,
+      day_of_week: parseInt(addDay),
+      default_hours: parseFloat(addHours),
+      rate_id: null, rate_name: null, notes: null,
+      hourly_rate: addRate ? parseFloat(addRate) : null,
+      mileage: addMileage ? parseFloat(addMileage) : null,
+      mileage_rate: addMileageRate ? parseFloat(addMileageRate) : null,
+      reference_number: addRefNum || null,
+      expenses: [],
     });
-    setHours(''); setHourlyRate(''); setMileage(''); setMileageRate(''); setRefNum('');
+    setAddHours(''); setAddRate(''); setAddMileage(''); setAddMileageRate(''); setAddRefNum('');
   };
 
   return (
@@ -82,30 +140,85 @@ function FixedShiftsSection({ clientId }: { clientId: string }) {
       <h4 className="text-sm font-semibold text-foreground">Fixed Weekly Shifts</h4>
       {shifts.map(s => (
         <div key={s.id} className="p-2 rounded bg-muted/50">
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-medium">{DAY_NAMES[s.day_of_week]}: {s.default_hours}hrs
-              {s.hourly_rate ? ` · $${s.hourly_rate}/hr` : ''}
-              {s.mileage ? ` · ${s.mileage}km` : ''}
-            </span>
-            <Button variant="ghost" size="icon" onClick={() => deleteShift.mutate(s.id)}>
-              <Trash2 className="w-3 h-3" />
-            </Button>
-          </div>
-          {s.reference_number && <p className="text-xs text-muted-foreground mt-0.5">{s.reference_number}</p>}
+          {editingId === s.id ? (
+            <div className="space-y-2">
+              <div className="flex gap-2">
+                <select value={editForm.day_of_week} onChange={e => setEditForm(f => ({ ...f, day_of_week: e.target.value }))} className="rounded-md border border-input bg-background px-2 py-1 text-sm">
+                  {DAY_NAMES.map((d, i) => <option key={i} value={i}>{d}</option>)}
+                </select>
+                <Input type="number" placeholder="Hours" value={editForm.default_hours} onChange={e => setEditForm(f => ({ ...f, default_hours: e.target.value }))} className="w-20 text-sm" />
+                <Input type="number" placeholder="$/hr" value={editForm.hourly_rate} onChange={e => setEditForm(f => ({ ...f, hourly_rate: e.target.value }))} className="w-20 text-sm" />
+              </div>
+              <div className="flex gap-2">
+                <Input type="number" placeholder="km" value={editForm.mileage} onChange={e => setEditForm(f => ({ ...f, mileage: e.target.value }))} className="w-20 text-sm" />
+                <Input type="number" placeholder="$/km" value={editForm.mileage_rate} onChange={e => setEditForm(f => ({ ...f, mileage_rate: e.target.value }))} className="w-20 text-sm" />
+                <Input placeholder="Ref #" value={editForm.reference_number} onChange={e => setEditForm(f => ({ ...f, reference_number: e.target.value }))} className="text-sm flex-1" />
+              </div>
+              <div>
+                <Label className="text-xs text-muted-foreground">Fixed Expenses</Label>
+                {editForm.expenses.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {editForm.expenses.map((exp, i) => (
+                      <span key={i} className="inline-flex items-center gap-1 text-xs bg-background px-2 py-1 rounded-full border">
+                        {exp.name}: ${exp.amount.toFixed(2)}
+                        <button onClick={() => removeEditExpense(i)} className="hover:text-destructive">×</button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <div className="flex gap-1 mt-1">
+                  <Input placeholder="Expense" value={newExpName} onChange={e => setNewExpName(e.target.value)} className="text-xs h-7" />
+                  <Input type="number" placeholder="$" value={newExpAmount} onChange={e => setNewExpAmount(e.target.value)} className="w-16 text-xs h-7" />
+                  <Button size="sm" variant="ghost" className="h-7 px-2" onClick={addEditExpense}><Plus className="w-3 h-3" /></Button>
+                </div>
+              </div>
+              <div className="flex gap-1 justify-end">
+                <Button size="sm" variant="ghost" onClick={cancelEdit}><X className="w-3 h-3 mr-1" /> Cancel</Button>
+                <Button size="sm" onClick={saveEdit}><Save className="w-3 h-3 mr-1" /> Save</Button>
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium">{DAY_NAMES[s.day_of_week]}: {s.default_hours}hrs
+                  {s.hourly_rate ? ` · $${s.hourly_rate}/hr` : ''}
+                  {s.mileage ? ` · ${s.mileage}km` : ''}
+                </span>
+                <div className="flex items-center gap-0.5">
+                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => startEdit(s)}>
+                    <Pencil className="w-3 h-3" />
+                  </Button>
+                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => deleteShift.mutate(s.id)}>
+                    <Trash2 className="w-3 h-3" />
+                  </Button>
+                </div>
+              </div>
+              {s.reference_number && <p className="text-xs text-muted-foreground mt-0.5">{s.reference_number}</p>}
+              {s.expenses && s.expenses.length > 0 && (
+                <div className="flex flex-wrap gap-1 mt-1">
+                  {s.expenses.map((exp, i) => (
+                    <span key={i} className="text-xs bg-background px-2 py-0.5 rounded-full border text-muted-foreground">
+                      {exp.name}: ${exp.amount.toFixed(2)}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
         </div>
       ))}
       <div className="space-y-1.5 pt-1">
         <div className="flex gap-2">
-          <select value={day} onChange={e => setDay(e.target.value)} className="rounded-md border border-input bg-background px-3 py-2 text-sm">
+          <select value={addDay} onChange={e => setAddDay(e.target.value)} className="rounded-md border border-input bg-background px-3 py-2 text-sm">
             {DAY_NAMES.map((d, i) => <option key={i} value={i}>{d}</option>)}
           </select>
-          <Input type="number" placeholder="Hours" value={hours} onChange={e => setHours(e.target.value)} className="w-24 text-sm" />
-          <Input type="number" placeholder="$/hr" value={hourlyRate} onChange={e => setHourlyRate(e.target.value)} className="w-20 text-sm" />
+          <Input type="number" placeholder="Hours" value={addHours} onChange={e => setAddHours(e.target.value)} className="w-24 text-sm" />
+          <Input type="number" placeholder="$/hr" value={addRate} onChange={e => setAddRate(e.target.value)} className="w-20 text-sm" />
         </div>
         <div className="flex gap-2">
-          <Input type="number" placeholder="km" value={mileage} onChange={e => setMileage(e.target.value)} className="w-20 text-sm" />
-          <Input type="number" placeholder="$/km" value={mileageRate} onChange={e => setMileageRate(e.target.value)} className="w-20 text-sm" />
-          <Input placeholder="Ref #" value={refNum} onChange={e => setRefNum(e.target.value)} className="text-sm flex-1" />
+          <Input type="number" placeholder="km" value={addMileage} onChange={e => setAddMileage(e.target.value)} className="w-20 text-sm" />
+          <Input type="number" placeholder="$/km" value={addMileageRate} onChange={e => setAddMileageRate(e.target.value)} className="w-20 text-sm" />
+          <Input placeholder="Ref #" value={addRefNum} onChange={e => setAddRefNum(e.target.value)} className="text-sm flex-1" />
           <Button size="sm" onClick={handleAdd}><Plus className="w-3 h-3" /></Button>
         </div>
       </div>
@@ -114,7 +227,6 @@ function FixedShiftsSection({ clientId }: { clientId: string }) {
 }
 
 export default function ClientsPage() {
-  const { user } = useAuth();
   const { clients, isLoading, createClient, deleteClient } = useClients();
   const { toast } = useToast();
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -139,7 +251,7 @@ export default function ClientsPage() {
         hourly_rate: parseFloat(form.hourly_rate),
         km_rate: parseFloat(form.km_rate),
       });
-      toast({ title: 'Client added! 🎉' });
+      toast({ title: 'Client added!' });
       setDialogOpen(false);
       setForm({ name: '', email: '', phone: '', address: '', service_description: 'Assistance to Access Community and Social participation', ref_number: '04_104_0125_6_1', hourly_rate: '44.00', km_rate: '0.95' });
     } catch (err: any) {

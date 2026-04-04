@@ -52,7 +52,7 @@ export default function SettingsPage() {
         <CardContent className="space-y-4">
           <div>
             <Label>Full Name</Label>
-            <Input value={form.display_name} onChange={e => setForm({...form, display_name: e.target.value})} placeholder="Chang Jernn Goh" />
+            <Input value={form.display_name} onChange={e => setForm({...form, display_name: e.target.value})} placeholder="Your full name" />
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>

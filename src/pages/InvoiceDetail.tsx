@@ -65,8 +65,9 @@ export default function InvoiceDetail() {
     doc.text(`Invoice #${String(invoice.invoice_number).padStart(3, '0')} — Calculations`, 14, 20);
 
     const tableData = shifts.map(s => {
-      const hoursStr = `${s.hours}H - $${(s.hours * s.hourly_rate).toFixed(2)}`;
-      const kmStr = s.km > 0 ? `$${(s.km * s.km_rate).toFixed(2)}` : '';
+      const rateLabel = s.rate_name && s.rate_name !== 'Standard' ? `${s.rate_name} ` : '';
+      const hoursStr = `${rateLabel}${s.hours}H @ $${s.hourly_rate}/hr = $${(s.hours * s.hourly_rate).toFixed(2)}`;
+      const kmStr = s.km > 0 ? `${s.km}km @ $${s.km_rate}/km = $${(s.km * s.km_rate).toFixed(2)}` : '';
       const expStr = s.expenses.map((e: Expense) => `${e.name} - $${e.amount.toFixed(2)}`).join('\n');
       return [s.day_name, s.shift_date, hoursStr, kmStr, expStr, `$${s.shift_total.toFixed(2)}`];
     });
@@ -74,7 +75,7 @@ export default function InvoiceDetail() {
     tableData.push(['TOTAL', '', '', '', '', `$${shifts.reduce((s, sh) => s + sh.shift_total, 0).toFixed(2)}`]);
 
     autoTable(doc, {
-      head: [['Day', 'Date', `Hours ($${client?.hourly_rate ?? 44}/H)`, `Mileage ($${client?.km_rate ?? 0.95}/km)`, 'Additional Fees', 'Amount']],
+      head: [['Day', 'Date', 'Hours', 'Mileage', 'Additional Fees', 'Amount']],
       body: tableData,
       startY: 30,
       styles: { fontSize: 9 },
@@ -110,15 +111,16 @@ export default function InvoiceDetail() {
       s.shift_date,
       client?.service_description ?? '',
       s.reference_number || client?.ref_number || '',
+      s.rate_name || 'Standard',
       s.invoice_hours.toFixed(2),
       `$${s.invoice_rate}`,
       `$${s.invoice_amount.toFixed(2)}`,
     ]);
 
-    tableData.push(['Total', '', '', '', '', `$${Number(invoice.total_amount).toFixed(2)}`]);
+    tableData.push(['Total', '', '', '', '', '', `$${Number(invoice.total_amount).toFixed(2)}`]);
 
     autoTable(doc, {
-      head: [['Date', 'Description', 'Ref #', 'Hrs', 'Rate', 'Amount']],
+      head: [['Date', 'Description', 'Ref #', 'Rate', 'Hrs', '$/Hr', 'Amount']],
       body: tableData,
       startY: y,
       styles: { fontSize: 9 },
@@ -157,6 +159,7 @@ export default function InvoiceDetail() {
                 <tr className="border-b border-border">
                   <th className="text-left py-2 text-muted-foreground">Day</th>
                   <th className="text-left py-2 text-muted-foreground">Date</th>
+                  <th className="text-left py-2 text-muted-foreground">Rate</th>
                   <th className="text-left py-2 text-muted-foreground">Hours</th>
                   <th className="text-left py-2 text-muted-foreground">Mileage</th>
                   <th className="text-left py-2 text-muted-foreground">Expenses</th>
@@ -168,14 +171,15 @@ export default function InvoiceDetail() {
                   <tr key={i} className="border-b border-border/50">
                     <td className="py-2">{s.day_name}</td>
                     <td>{s.shift_date}</td>
-                    <td>{s.hours}H - ${(s.hours * s.hourly_rate).toFixed(2)}</td>
-                    <td>{s.km > 0 ? `$${(s.km * s.km_rate).toFixed(2)}` : '-'}</td>
+                    <td>{s.rate_name && s.rate_name !== 'Standard' ? <span className="text-xs font-medium px-1.5 py-0.5 rounded bg-primary/10 text-primary">{s.rate_name}</span> : 'Standard'} <span className="text-muted-foreground text-xs">${s.hourly_rate}/hr</span></td>
+                    <td>{s.hours}H = ${(s.hours * s.hourly_rate).toFixed(2)}</td>
+                    <td>{s.km > 0 ? `${s.km}km = $${(s.km * s.km_rate).toFixed(2)}` : '-'}</td>
                     <td>{s.expenses.length > 0 ? s.expenses.map((e: Expense) => `${e.name} $${e.amount.toFixed(2)}`).join(', ') : '-'}</td>
                     <td className="text-right font-medium">${s.shift_total.toFixed(2)}</td>
                   </tr>
                 ))}
                 <tr className="font-bold">
-                  <td colSpan={5} className="py-2">TOTAL</td>
+                  <td colSpan={6} className="py-2">TOTAL</td>
                   <td className="text-right">${shifts.reduce((sum, s) => sum + s.shift_total, 0).toFixed(2)}</td>
                 </tr>
               </tbody>
@@ -195,8 +199,9 @@ export default function InvoiceDetail() {
                   <th className="text-left py-2 text-muted-foreground">Date</th>
                   <th className="text-left py-2 text-muted-foreground">Description</th>
                   <th className="text-left py-2 text-muted-foreground">Ref #</th>
+                  <th className="text-left py-2 text-muted-foreground">Rate</th>
                   <th className="text-right py-2 text-muted-foreground">Hrs</th>
-                  <th className="text-right py-2 text-muted-foreground">Rate</th>
+                  <th className="text-right py-2 text-muted-foreground">$/Hr</th>
                   <th className="text-right py-2 text-muted-foreground">Amount</th>
                 </tr>
               </thead>
@@ -223,6 +228,7 @@ export default function InvoiceDetail() {
                           </TooltipProvider>
                         ) : '-'}
                       </td>
+                      <td>{s.rate_name || 'Standard'}</td>
                       <td className="text-right">{s.invoice_hours.toFixed(2)}</td>
                       <td className="text-right">${s.invoice_rate}</td>
                       <td className="text-right font-medium">${s.invoice_amount.toFixed(2)}</td>
@@ -230,7 +236,7 @@ export default function InvoiceDetail() {
                   );
                 })}
                 <tr className="font-bold">
-                  <td colSpan={5} className="py-2">Total</td>
+                  <td colSpan={6} className="py-2">Total</td>
                   <td className="text-right">${Number(invoice.total_amount).toFixed(2)}</td>
                 </tr>
               </tbody>

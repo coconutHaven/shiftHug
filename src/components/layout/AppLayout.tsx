@@ -1,8 +1,7 @@
 import { ReactNode, useState } from 'react';
-import { useAuth } from '@/contexts/AuthContext';
 import { useTheme, themes } from '@/contexts/ThemeContext';
 import { Button } from '@/components/ui/button';
-import { Heart, FileText, Users, Settings, LogOut, Palette, Menu, X, Home } from 'lucide-react';
+import { Heart, FileText, Users, Settings, Palette, Menu, X, Home } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 import {
   DropdownMenu,
@@ -21,14 +20,12 @@ const navItems = [
 ];
 
 export default function AppLayout({ children }: { children: ReactNode }) {
-  const { signOut } = useAuth();
   const { theme, setTheme } = useTheme();
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Top nav */}
       <header className="sticky top-0 z-50 border-b border-border bg-card/80 backdrop-blur-md">
         <div className="container flex items-center justify-between h-16 px-4">
           <div className="flex items-center gap-3">
@@ -39,7 +36,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
               <div className="w-9 h-9 rounded-xl gradient-primary flex items-center justify-center">
                 <Heart className="w-5 h-5 text-primary-foreground" />
               </div>
-              <span className="font-heading font-bold text-lg text-foreground hidden sm:inline">CareInvoice</span>
+              <span className="font-heading font-bold text-lg text-foreground hidden sm:inline">SupportMate</span>
             </Link>
           </div>
 
@@ -77,14 +74,10 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                 ))}
               </DropdownMenuContent>
             </DropdownMenu>
-            <Button variant="ghost" size="icon" onClick={signOut}>
-              <LogOut className="w-4 h-4" />
-            </Button>
           </div>
         </div>
       </header>
 
-      {/* Mobile nav */}
       {mobileOpen && (
         <div className="md:hidden border-b border-border bg-card p-4 animate-fade-in">
           <nav className="flex flex-col gap-1">
