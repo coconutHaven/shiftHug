@@ -84,12 +84,23 @@ export function useInvoices(clientId?: string) {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['invoices'] }),
   });
 
+  const updateDraftInvoice = useMutation({
+    mutationFn: async (payload: { id: string; invoice_date: string; shifts: InvoiceShift[] }) => {
+      return api.put<Invoice>(`/invoices/${payload.id}/draft`, {
+        invoice_date: payload.invoice_date,
+        shifts: payload.shifts,
+      });
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['invoices'] }),
+  });
+
   return {
     invoices: invoicesQuery.data ?? [],
     isLoading: invoicesQuery.isLoading,
     createInvoice,
     publishInvoice,
     updateInvoice,
+    updateDraftInvoice,
     deleteDraft,
     getNextInvoiceNumber,
   };
