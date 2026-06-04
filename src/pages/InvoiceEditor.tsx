@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useClients } from '@/hooks/useClients';
 import { useInvoices, InvoiceShift, Expense } from '@/hooks/useInvoices';
@@ -11,12 +11,30 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Plus, Trash2, CalendarIcon, FileText, CalendarRange, Sparkles, Info } from 'lucide-react';
-import { format, eachDayOfInterval, getDay } from 'date-fns';
+import { format, eachDayOfInterval, getDay, parse } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+/** Parse shift_date stored as d/M (e.g. 4/6) using the current calendar year. */
+function parseShiftDateStr(shiftDate: string): Date | null {
+  try {
+    const d = parse(shiftDate.trim(), 'd/M', new Date());
+    return Number.isNaN(d.getTime()) ? null : d;
+  } catch {
+    return null;
+  }
+}
+
+function withShiftDate(shift: InvoiceShift, date: Date): InvoiceShift {
+  return {
+    ...shift,
+    shift_date: format(date, 'd/M'),
+    day_name: DAY_NAMES[getDay(date)],
+  };
+}
 
 const REFERENCE_DESCRIPTIONS: Record<string, string> = {
   '04_104_0125_6_1': 'Assistance with Personal Activities',
@@ -91,10 +109,34 @@ function ShiftRow({ shift, index, onChange, onRemove, clientRates }: {
   return (
     <Card className="shadow-soft animate-fade-in">
       <CardContent className="p-4">
-        <div className="flex items-start justify-between mb-3">
-          <div className="flex items-center gap-2">
+        <div className="flex items-start justify-between mb-3 gap-2">
+          <div className="flex flex-wrap items-end gap-2">
             <span className="text-xs font-semibold px-2 py-1 rounded-full bg-primary/10 text-primary">{shift.day_name}</span>
-            <span className="text-sm font-medium text-foreground">{shift.shift_date}</span>
+            <div>
+              <Label className="text-xs">Shift date</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className={cn('h-8 justify-start gap-2 font-normal text-sm', !shift.shift_date && 'text-muted-foreground')}
+                  >
+                    <CalendarIcon className="w-4 h-4 shrink-0" />
+                    {shift.shift_date || 'Pick date'}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={parseShiftDateStr(shift.shift_date) ?? undefined}
+                    onSelect={date => {
+                      if (date) onChange(index, withShiftDate(shift, date));
+                    }}
+                    className="pointer-events-auto"
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
           </div>
           <Button variant="ghost" size="icon" onClick={() => onRemove(index)}>
             <Trash2 className="w-4 h-4 text-destructive" />
@@ -227,6 +269,7 @@ export default function InvoiceEditor() {
   const [shifts, setShifts] = useState<InvoiceShift[]>([]);
   const [nextNumber, setNextNumber] = useState(1);
   const [customNumber, setCustomNumber] = useState<string>('');
+  const prevClientIdRef = useRef<string | undefined>(undefined);
   const [weeklyDialogOpen, setWeeklyDialogOpen] = useState(false);
   const [startDate, setStartDate] = useState<Date>();
   const [endDate, setEndDate] = useState<Date>();
@@ -258,7 +301,7 @@ export default function InvoiceEditor() {
     setInvoiceDate(draftInvoice.invoice_date?.slice(0, 10) ?? format(new Date(), 'yyyy-MM-dd'));
     const mapped = mapInvoiceShiftsToEditor(draftInvoice.invoice_shifts ?? []).sort((a, b) => a.sort_order - b.sort_order);
     setShifts(mapped.map(s => calculateShift(s, clientRow.hourly_rate)));
-    setCustomNumber('');
+    setCustomNumber(String(draftInvoice.invoice_number));
     setEditLoaded(true);
   }, [isEditMode, editInvoiceId, editLoaded, draftInvoice, clients, clientsLoading, navigate, toast]);
 
@@ -267,14 +310,14 @@ export default function InvoiceEditor() {
 
   useEffect(() => {
     if (isEditMode) return;
+    if (prevClientIdRef.current !== clientId) {
+      setCustomNumber('');
+      prevClientIdRef.current = clientId;
+    }
     if (clientId) {
-      getNextInvoiceNumber(clientId).then(n => {
-        setNextNumber(n);
-        setCustomNumber('');
-      });
+      getNextInvoiceNumber(clientId).then(n => setNextNumber(n));
     } else {
       setNextNumber(1);
-      setCustomNumber('');
     }
   }, [clientId, isEditMode, getNextInvoiceNumber]);
 
@@ -356,6 +399,14 @@ export default function InvoiceEditor() {
 
   const totalAmount = shifts.reduce((sum, s) => sum + s.invoice_amount, 0);
 
+  const parsedInvoiceNumberOverride = (): number | undefined => {
+    const t = customNumber.trim();
+    if (t === '') return undefined;
+    const n = parseInt(t, 10);
+    if (Number.isNaN(n) || n < 1) return undefined;
+    return n;
+  };
+
   const handleSaveNew = async (publish: boolean) => {
     if (!clientId || shifts.length === 0) {
       toast({ title: 'Add at least one shift', variant: 'destructive' });
@@ -367,7 +418,8 @@ export default function InvoiceEditor() {
         invoice_date: invoiceDate,
         shifts,
       };
-      if (customNumber) payload.invoice_number = parseInt(customNumber, 10);
+      const override = parsedInvoiceNumberOverride();
+      if (override != null) payload.invoice_number = override;
       const result = await createInvoice.mutateAsync(payload);
       toast({ title: publish ? 'Invoice published' : 'Draft saved' });
       if (publish) await publishInvoice.mutateAsync(result.id);
@@ -384,11 +436,19 @@ export default function InvoiceEditor() {
       return;
     }
     try {
-      await updateDraftInvoice.mutateAsync({
+      const draftPayload: {
+        id: string;
+        invoice_date: string;
+        shifts: InvoiceShift[];
+        invoice_number?: number;
+      } = {
         id: editInvoiceId,
         invoice_date: invoiceDate,
         shifts,
-      });
+      };
+      const override = parsedInvoiceNumberOverride();
+      if (override != null) draftPayload.invoice_number = override;
+      await updateDraftInvoice.mutateAsync(draftPayload);
       if (publish) await publishInvoice.mutateAsync(editInvoiceId);
       toast({ title: publish ? 'Invoice published' : 'Draft updated' });
       navigate(`/invoices/${editInvoiceId}`);
@@ -427,7 +487,7 @@ export default function InvoiceEditor() {
 
       <Card className="shadow-card">
         <CardContent className="p-4 space-y-4">
-          <div className={`grid grid-cols-1 gap-4 ${isEditMode ? 'md:grid-cols-2' : 'md:grid-cols-3'}`}>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
             <div>
               <Label>Client</Label>
               <Select value={clientId} onValueChange={setClientId} disabled={isEditMode}>
@@ -442,18 +502,22 @@ export default function InvoiceEditor() {
               <Label>Invoice Date</Label>
               <Input type="date" value={invoiceDate} onChange={e => setInvoiceDate(e.target.value)} />
             </div>
-            {!isEditMode && (
-              <div>
-                <Label>Invoice #</Label>
-                <Input
-                  type="number"
-                  value={customNumber}
-                  onChange={e => setCustomNumber(e.target.value)}
-                  placeholder={String(nextNumber)}
-                />
-                <p className="text-xs text-muted-foreground mt-1">Next auto: {nextNumber}. Override if needed.</p>
-              </div>
-            )}
+            <div>
+              <Label>Invoice #</Label>
+              <Input
+                type="number"
+                min={1}
+                value={customNumber}
+                onChange={e => setCustomNumber(e.target.value)}
+                placeholder={isEditMode ? undefined : String(nextNumber)}
+              />
+              {!isEditMode && (
+                <p className="text-xs text-muted-foreground mt-1">Next auto: {nextNumber}. Leave blank to use that number.</p>
+              )}
+              {isEditMode && (
+                <p className="text-xs text-muted-foreground mt-1">Change the number if needed, then save.</p>
+              )}
+            </div>
           </div>
           {selectedClient && (
             <div className="text-sm text-muted-foreground flex flex-wrap gap-x-4 gap-y-1">

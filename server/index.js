@@ -322,13 +322,22 @@ app.put('/api/invoices/:id/draft', (req, res) => {
   if (!inv) return res.status(404).json({ error: 'Invoice not found' });
   if (inv.status !== 'draft') return res.status(400).json({ error: 'Only draft invoices can be edited' });
 
-  const { invoice_date, shifts } = req.body;
+  const { invoice_date, shifts, invoice_number: bodyInvoiceNumber } = req.body;
   if (!Array.isArray(shifts) || shifts.length === 0) {
     return res.status(400).json({ error: 'At least one shift is required' });
   }
 
   const totalAmount = shifts.reduce((sum, s) => sum + Number(s.invoice_amount), 0);
   const formattedDate = new Date(invoice_date).toISOString().split('T')[0];
+
+  let invoiceNumberToSet = inv.invoice_number;
+  if (bodyInvoiceNumber !== undefined && bodyInvoiceNumber !== null && bodyInvoiceNumber !== '') {
+    const n =
+      typeof bodyInvoiceNumber === 'number'
+        ? bodyInvoiceNumber
+        : parseInt(String(bodyInvoiceNumber), 10);
+    if (!Number.isNaN(n) && n > 0) invoiceNumberToSet = n;
+  }
 
   const insertShift = db.prepare(`
     INSERT INTO invoice_shifts (id, invoice_id, shift_date, day_name, hours, hourly_rate, rate_name, reference_number, km, km_rate, expenses, expenses_total, shift_total, invoice_hours, invoice_rate, invoice_amount, sort_order)
@@ -359,8 +368,8 @@ app.put('/api/invoices/:id/draft', (req, res) => {
       );
     });
     db.prepare(
-      'UPDATE invoices SET invoice_date = ?, total_amount = ?, updated_at = datetime(\'now\') WHERE id = ?'
-    ).run(formattedDate, totalAmount, req.params.id);
+      'UPDATE invoices SET invoice_date = ?, total_amount = ?, invoice_number = ?, updated_at = datetime(\'now\') WHERE id = ?'
+    ).run(formattedDate, totalAmount, invoiceNumberToSet, req.params.id);
   });
 
   tx();

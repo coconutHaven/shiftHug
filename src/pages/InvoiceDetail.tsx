@@ -149,7 +149,10 @@ export default function InvoiceDetail() {
   const generateCalculationsPDF = () => {
     const doc = new jsPDF({ unit: 'mm', format: 'a4' });
     const invNo = String(invoice.invoice_number).padStart(3, '0');
-    let y = addPdfBrandHeader(doc, 'SUPPORTING CALCULATIONS', [`Invoice no. ${invNo}`, `Date ${invoice.invoice_date}`]);
+    let y = addPdfBrandHeader(doc, 'SUPPORTING CALCULATIONS', [
+      `Invoice no. ${invNo}`,
+      `Date issued ${invoice.invoice_date}`,
+    ]);
 
     const innerW = pdfInnerWidthMm(doc);
     autoTable(doc, {
@@ -164,13 +167,24 @@ export default function InvoiceDetail() {
         fontSize: 7,
         halign: 'left',
       },
-      bodyStyles: { fontSize: 9, textColor: Pdf.text, valign: 'top', minCellHeight: 22 },
+      bodyStyles: { fontSize: 9, textColor: Pdf.text, valign: 'top', minCellHeight: 24 },
       styles: { lineColor: Pdf.border, lineWidth: 0.1, cellPadding: 3.5 },
       columnStyles: { 0: { cellWidth: innerW / 2 }, 1: { cellWidth: innerW / 2 } },
       theme: 'plain',
       margin: { left: PDF_MARGIN, right: PDF_MARGIN },
     });
     y = ((doc as DocWithTable).lastAutoTable?.finalY ?? y) + 8;
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(...Pdf.muted);
+    doc.text('Description of support', PDF_MARGIN, y);
+    y += 5;
+    doc.setFontSize(9);
+    doc.setTextColor(...Pdf.text);
+    const calcDescLines = doc.splitTextToSize(client?.service_description ?? '—', innerW);
+    doc.text(calcDescLines, PDF_MARGIN, y);
+    y += calcDescLines.length * 4.2 + 8;
 
     const tableData = shifts.map(s => {
       const rateLabel = s.rate_name && s.rate_name !== 'Standard' ? `${s.rate_name} · ` : '';
@@ -185,20 +199,34 @@ export default function InvoiceDetail() {
     tableData.push(['TOTAL', '', '', '', '', `$${calcGrand.toFixed(2)}`]);
     const calcBodyRows = tableData.length;
 
+    const k0 = 18;
+    const k1 = 24;
+    const k3 = 28;
+    const k4 = 34;
+    const k5 = 22;
+    const k2 = innerW - k0 - k1 - k3 - k4 - k5;
+
     autoTable(doc, {
       tableWidth: innerW,
       head: [['Day', 'Date', 'Hours & rate', 'Travel', 'Expenses', 'Amount (AUD)']],
       body: tableData,
       startY: y,
-      styles: { fontSize: 7.5, cellPadding: 2, valign: 'top', lineColor: Pdf.border, lineWidth: 0.1 },
+      styles: {
+        fontSize: 7.5,
+        cellPadding: 2,
+        valign: 'top',
+        lineColor: Pdf.border,
+        lineWidth: 0.1,
+        overflow: 'linebreak',
+      },
       headStyles: { fillColor: Pdf.primaryDark, textColor: 255, fontStyle: 'bold', fontSize: 8 },
       columnStyles: {
-        0: { cellWidth: 18 },
-        1: { cellWidth: 24 },
-        2: { cellWidth: 54 },
-        3: { cellWidth: 30 },
-        4: { cellWidth: 36 },
-        5: { cellWidth: innerW - 18 - 24 - 54 - 30 - 36, halign: 'right' },
+        0: { cellWidth: k0 },
+        1: { cellWidth: k1 },
+        2: { cellWidth: k2 },
+        3: { cellWidth: k3 },
+        4: { cellWidth: k4 },
+        5: { cellWidth: k5, halign: 'right' },
       },
       margin: { left: PDF_MARGIN, right: PDF_MARGIN },
       didParseCell: data => {

@@ -85,10 +85,16 @@ export function useInvoices(clientId?: string) {
   });
 
   const updateDraftInvoice = useMutation({
-    mutationFn: async (payload: { id: string; invoice_date: string; shifts: InvoiceShift[] }) => {
+    mutationFn: async (payload: {
+      id: string;
+      invoice_date: string;
+      shifts: InvoiceShift[];
+      invoice_number?: number;
+    }) => {
       return api.put<Invoice>(`/invoices/${payload.id}/draft`, {
         invoice_date: payload.invoice_date,
         shifts: payload.shifts,
+        ...(payload.invoice_number != null ? { invoice_number: payload.invoice_number } : {}),
       });
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['invoices'] }),
