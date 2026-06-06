@@ -11,6 +11,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { sortShiftsByDate } from '@/lib/shiftDates';
 
 const REFERENCE_DESCRIPTIONS: Record<string, string> = {
   '04_104_0125_6_1': 'Assistance with Personal Activities',
@@ -124,10 +125,12 @@ export default function InvoiceDetail() {
 
   if (!invoice) return <div className="text-center py-12 text-muted-foreground">Loading invoice...</div>;
 
-  const shifts: InvoiceShift[] = (invoice.invoice_shifts ?? []).map(s => ({
-    ...s,
-    expenses: (typeof s.expenses === 'string' ? JSON.parse(s.expenses) : s.expenses ?? []) as Expense[],
-  })).sort((a, b) => a.sort_order - b.sort_order);
+  const shifts: InvoiceShift[] = sortShiftsByDate(
+    (invoice.invoice_shifts ?? []).map(s => ({
+      ...s,
+      expenses: (typeof s.expenses === 'string' ? JSON.parse(s.expenses) : s.expenses ?? []) as Expense[],
+    }))
+  );
 
   const handlePublish = async () => {
     await publishInvoice.mutateAsync(invoice.id);

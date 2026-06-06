@@ -11,22 +11,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Plus, Trash2, CalendarIcon, FileText, CalendarRange, Sparkles, Info } from 'lucide-react';
-import { format, eachDayOfInterval, getDay, parse } from 'date-fns';
+import { format, eachDayOfInterval, getDay } from 'date-fns';
 import { cn } from '@/lib/utils';
+import { parseShiftDateStr, sortShiftsByDate } from '@/lib/shiftDates';
 import { useToast } from '@/hooks/use-toast';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-
-/** Parse shift_date stored as d/M (e.g. 4/6) using the current calendar year. */
-function parseShiftDateStr(shiftDate: string): Date | null {
-  try {
-    const d = parse(shiftDate.trim(), 'd/M', new Date());
-    return Number.isNaN(d.getTime()) ? null : d;
-  } catch {
-    return null;
-  }
-}
 
 function withShiftDate(shift: InvoiceShift, date: Date): InvoiceShift {
   return {
@@ -299,8 +290,10 @@ export default function InvoiceEditor() {
 
     setClientId(draftInvoice.client_id);
     setInvoiceDate(draftInvoice.invoice_date?.slice(0, 10) ?? format(new Date(), 'yyyy-MM-dd'));
-    const mapped = mapInvoiceShiftsToEditor(draftInvoice.invoice_shifts ?? []).sort((a, b) => a.sort_order - b.sort_order);
-    setShifts(mapped.map(s => calculateShift(s, clientRow.hourly_rate)));
+    const mapped = mapInvoiceShiftsToEditor(draftInvoice.invoice_shifts ?? []);
+    setShifts(
+      sortShiftsByDate(mapped).map(s => calculateShift(s, clientRow.hourly_rate))
+    );
     setCustomNumber(String(draftInvoice.invoice_number));
     setEditLoaded(true);
   }, [isEditMode, editInvoiceId, editLoaded, draftInvoice, clients, clientsLoading, navigate, toast]);
@@ -322,8 +315,9 @@ export default function InvoiceEditor() {
   }, [clientId, isEditMode, getNextInvoiceNumber]);
 
   const recalcShifts = (newShifts: InvoiceShift[]) => {
-    if (!selectedClient) return newShifts;
-    return newShifts.map(s => calculateShift(s, selectedClient.hourly_rate));
+    const sorted = sortShiftsByDate(newShifts);
+    if (!selectedClient) return sorted;
+    return sorted.map(s => calculateShift(s, selectedClient.hourly_rate));
   };
 
   const handleShiftChange = (index: number, shift: InvoiceShift) => {
