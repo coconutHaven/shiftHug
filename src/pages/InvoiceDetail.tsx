@@ -289,7 +289,7 @@ export default function InvoiceDetail() {
       client?.service_description ?? '',
       s.reference_number || client?.ref_number || '',
       s.invoice_hours.toFixed(2),
-      `$${s.hourly_rate}`,
+      `$${s.invoice_rate}`,
       `$${s.invoice_amount.toFixed(2)}`,
     ]);
     tableData.push(['Total', '', '', '', '', `$${Number(invoice.total_amount).toFixed(2)}`]);

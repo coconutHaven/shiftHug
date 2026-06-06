@@ -60,16 +60,24 @@ function normalizeShiftExpenses(raw: unknown): Expense[] {
   return [];
 }
 
-function calculateShift(shift: InvoiceShift, clientHourlyRate: number): InvoiceShift {
+function calculateShift(shift: InvoiceShift): InvoiceShift {
   const hoursAmount = shift.hours * shift.hourly_rate;
   const kmAmount = shift.km * shift.km_rate;
   const expensesTotal = shift.expenses.reduce((sum, e) => sum + e.amount, 0);
-  const shiftTotal = hoursAmount + kmAmount + expensesTotal;
-  const invoiceRate = clientHourlyRate;
-  const invoiceHours = Math.round((shiftTotal / invoiceRate) * 100) / 100;
-  const invoiceAmount = Math.round(invoiceHours * invoiceRate * 100) / 100;
+  const shiftTotal = Math.round((hoursAmount + kmAmount + expensesTotal) * 100) / 100;
+  const invoiceRate = shift.hourly_rate;
+  const divisor = invoiceRate > 0 ? invoiceRate : 1;
+  const invoiceHours = Math.round((shiftTotal / divisor) * 100) / 100;
+  const invoiceAmount = shiftTotal;
 
-  return { ...shift, expenses_total: expensesTotal, shift_total: shiftTotal, invoice_hours: invoiceHours, invoice_rate: invoiceRate, invoice_amount: invoiceAmount };
+  return {
+    ...shift,
+    expenses_total: expensesTotal,
+    shift_total: shiftTotal,
+    invoice_hours: invoiceHours,
+    invoice_rate: invoiceRate,
+    invoice_amount: invoiceAmount,
+  };
 }
 
 function ShiftRow({ shift, index, onChange, onRemove, clientRates }: {
@@ -291,9 +299,7 @@ export default function InvoiceEditor() {
     setClientId(draftInvoice.client_id);
     setInvoiceDate(draftInvoice.invoice_date?.slice(0, 10) ?? format(new Date(), 'yyyy-MM-dd'));
     const mapped = mapInvoiceShiftsToEditor(draftInvoice.invoice_shifts ?? []);
-    setShifts(
-      sortShiftsByDate(mapped).map(s => calculateShift(s, clientRow.hourly_rate))
-    );
+    setShifts(sortShiftsByDate(mapped).map(s => calculateShift(s)));
     setCustomNumber(String(draftInvoice.invoice_number));
     setEditLoaded(true);
   }, [isEditMode, editInvoiceId, editLoaded, draftInvoice, clients, clientsLoading, navigate, toast]);
@@ -315,9 +321,7 @@ export default function InvoiceEditor() {
   }, [clientId, isEditMode, getNextInvoiceNumber]);
 
   const recalcShifts = (newShifts: InvoiceShift[]) => {
-    const sorted = sortShiftsByDate(newShifts);
-    if (!selectedClient) return sorted;
-    return sorted.map(s => calculateShift(s, selectedClient.hourly_rate));
+    return sortShiftsByDate(newShifts).map(s => calculateShift(s));
   };
 
   const handleShiftChange = (index: number, shift: InvoiceShift) => {
