@@ -9,7 +9,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const dataDir = join(__dirname, '..', 'data');
 if (!existsSync(dataDir)) mkdirSync(dataDir, { recursive: true });
 
-const db = new Database(join(dataDir, 'supportmate.db'));
+const db = new Database(join(dataDir, 'shifthug.db'));
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
 

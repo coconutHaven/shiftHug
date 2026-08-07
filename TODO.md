@@ -1,4 +1,4 @@
-# SupportMate TODO
+# shiftHug TODO
 
 ## High Priority Fixes
 
@@ -306,8 +306,8 @@ Check rates against NDIS price guide.
 
 Project name:
 
-SupportMate
+shiftHug
 
 Positioning:
 
-NDIS invoicing tool for independent support workers.
+Invoice tool for independent support workers.

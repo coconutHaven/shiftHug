@@ -1,7 +1,0 @@
-#!/bin/bash
-ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
-if [[ ! -f "$ROOT/package.json" ]]; then
-  osascript -e 'display dialog "Could not find SupportMate next to this app (package.json missing). Keep SupportMate.app in the same folder as the project." buttons {"OK"} default button "OK" with icon stop' 2>/dev/null || true
-  exit 1
-fi
-exec open -a Terminal "$ROOT/SupportMate.command"

@@ -1,6 +1,6 @@
 # shiftHug
 
-NDIS invoicing for independent support workers — clients, shifts, calculations, and PDF invoices.
+Invoice generator for support workers — clients, shifts, calculations, and PDF invoices.
 
 ## Local development
 
@@ -11,15 +11,14 @@ npm install
 npm run dev
 ```
 
-This starts the API (`http://localhost:3001`) and the Vite frontend (`http://localhost:8080`). Open the app in your browser at port **8080**.
+Opens the Vite frontend at **http://localhost:8080**. Data and auth use Supabase.
 
 Other scripts:
 
 - `npm run build` — production frontend build
-- `npm run start` — run API with built frontend (production)
+- `npm run build:pages` — build for GitHub Pages
 - `npm run test` — unit tests (Vitest)
-- `npx playwright test` — browser tests (optional)
 
-## Data
+## Deploy
 
-SQLite database file: `data/supportmate.db` (created automatically on first run).
+GitHub Pages: https://coconuthaven.github.io/shiftHug/
