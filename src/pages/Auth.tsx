@@ -70,7 +70,7 @@ export default function Auth() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-                minLength={6}
+                minLength={8}
               />
               <Button type="submit" className="w-full gradient-primary text-primary-foreground" disabled={loading}>
                 {loading ? 'Loading...' : isSignUp ? 'Sign Up' : 'Sign In'}
