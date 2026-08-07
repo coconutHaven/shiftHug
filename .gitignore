@@ -12,8 +12,20 @@ dist
 dist-ssr
 *.local
 
+# Env (use .env.example)
+.env
+.env.*
+!.env.example
+
 # Local database
 data/
+
+# Supabase CLI temp
+supabase/.temp/
+
+# Local agent/tooling
+.agents/
+skills-lock.json
 
 # Editor directories and files
 .vscode/*

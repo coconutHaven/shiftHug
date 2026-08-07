@@ -1,7 +1,8 @@
 import { ReactNode, useState } from 'react';
 import { useTheme, themes } from '@/contexts/ThemeContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
-import { Heart, FileText, Users, Settings, Palette, Menu, X, Home } from 'lucide-react';
+import { Heart, FileText, Users, Settings, Palette, Menu, X, Home, LogOut } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 import {
   DropdownMenu,
@@ -21,6 +22,7 @@ const navItems = [
 
 export default function AppLayout({ children }: { children: ReactNode }) {
   const { theme, setTheme } = useTheme();
+  const { signOut, user } = useAuth();
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -74,6 +76,16 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                 ))}
               </DropdownMenuContent>
             </DropdownMenu>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="gap-2"
+              onClick={() => signOut()}
+              title={user?.email ?? 'Sign out'}
+            >
+              <LogOut className="w-4 h-4" />
+              <span className="hidden sm:inline">Sign out</span>
+            </Button>
           </div>
         </div>
       </header>

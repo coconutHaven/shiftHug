@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useInvoices, InvoiceShift, Expense } from '@/hooks/useInvoices';
 import { useClients } from '@/hooks/useClients';
@@ -6,12 +7,15 @@ import { useUserSettings } from '@/hooks/useUserSettings';
 import type { UserSettings } from '@/hooks/useUserSettings';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Label } from '@/components/ui/label';
 import { FileText, Download, CheckCircle, ArrowLeft, Trash2, Info, Pencil } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { sortShiftsByDate } from '@/lib/shiftDates';
+import { buildInvoiceDisplayRows, invoiceLineTotal } from '@/lib/shiftCalculations';
 
 const REFERENCE_DESCRIPTIONS: Record<string, string> = {
   '04_104_0125_6_1': 'Assistance with Personal Activities',
@@ -119,6 +123,8 @@ export default function InvoiceDetail() {
   const { clients } = useClients();
   const { settings } = useUserSettings();
   const { toast } = useToast();
+  const [includeKm, setIncludeKm] = useState(false);
+  const [includeExpenses, setIncludeExpenses] = useState(false);
 
   const invoice = invoices.find(i => i.id === id);
   const client = invoice ? clients.find(c => c.id === invoice.client_id) : null;
@@ -131,6 +137,16 @@ export default function InvoiceDetail() {
       expenses: (typeof s.expenses === 'string' ? JSON.parse(s.expenses) : s.expenses ?? []) as Expense[],
     }))
   );
+
+  const hasKm = shifts.some(s => s.km > 0);
+  const hasExpenses = shifts.some(s => s.expenses.length > 0);
+  const invoiceRows = buildInvoiceDisplayRows(shifts, {
+    serviceDescription: client?.service_description ?? '',
+    defaultRef: client?.ref_number,
+    includeKm,
+    includeExpenses,
+  });
+  const invoiceTotal = invoiceLineTotal(shifts, { includeKm, includeExpenses });
 
   const handlePublish = async () => {
     await publishInvoice.mutateAsync(invoice.id);
@@ -284,15 +300,15 @@ export default function InvoiceDetail() {
     doc.text(descLines, PDF_MARGIN, y);
     y += descLines.length * 4.2 + 8;
 
-    const tableData = shifts.map(s => [
-      s.shift_date,
-      client?.service_description ?? '',
-      s.reference_number || client?.ref_number || '',
-      s.invoice_hours.toFixed(2),
-      `$${s.invoice_rate}`,
-      `$${s.invoice_amount.toFixed(2)}`,
+    const tableData = invoiceRows.map(r => [
+      r.date,
+      r.description,
+      r.reference,
+      r.hoursLabel,
+      r.rateLabel,
+      `$${r.amount.toFixed(2)}`,
     ]);
-    tableData.push(['Total', '', '', '', '', `$${Number(invoice.total_amount).toFixed(2)}`]);
+    tableData.push(['Total', '', '', '', '', `$${invoiceTotal.toFixed(2)}`]);
     const invBodyRows = tableData.length;
 
     // Six columns; description uses remaining width so the table matches page margins.
@@ -393,7 +409,37 @@ export default function InvoiceDetail() {
       </Card>
 
       <Card className="shadow-card">
-        <CardHeader><CardTitle className="font-heading">Invoice</CardTitle></CardHeader>
+        <CardHeader>
+          <CardTitle className="font-heading">Invoice</CardTitle>
+          {(hasKm || hasExpenses) && (
+            <div className="flex flex-wrap gap-4 pt-2">
+              {hasKm && (
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="include-km"
+                    checked={includeKm}
+                    onCheckedChange={(v) => setIncludeKm(v === true)}
+                  />
+                  <Label htmlFor="include-km" className="text-sm font-normal text-muted-foreground">
+                    Include travel (km) on invoice
+                  </Label>
+                </div>
+              )}
+              {hasExpenses && (
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="include-expenses"
+                    checked={includeExpenses}
+                    onCheckedChange={(v) => setIncludeExpenses(v === true)}
+                  />
+                  <Label htmlFor="include-expenses" className="text-sm font-normal text-muted-foreground">
+                    Include expenses on invoice
+                  </Label>
+                </div>
+              )}
+            </div>
+          )}
+        </CardHeader>
         <CardContent>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -402,27 +448,25 @@ export default function InvoiceDetail() {
                   <th className="text-left py-2 text-muted-foreground">Date</th>
                   <th className="text-left py-2 text-muted-foreground">Description</th>
                   <th className="text-left py-2 text-muted-foreground">Ref #</th>
-                  <th className="text-left py-2 text-muted-foreground">Rate</th>
                   <th className="text-right py-2 text-muted-foreground">Hrs</th>
-                  <th className="text-right py-2 text-muted-foreground">$/Hr</th>
+                  <th className="text-right py-2 text-muted-foreground">Rate</th>
                   <th className="text-right py-2 text-muted-foreground">Amount</th>
                 </tr>
               </thead>
               <tbody>
-                {shifts.map((s, i) => {
-                  const refNum = s.reference_number || client?.ref_number;
-                  const refDesc = refNum ? REFERENCE_DESCRIPTIONS[refNum] : undefined;
+                {invoiceRows.map((r, i) => {
+                  const refDesc = r.reference ? REFERENCE_DESCRIPTIONS[r.reference] : undefined;
                   return (
                     <tr key={i} className="border-b border-border/50">
-                      <td className="py-2">{s.shift_date}</td>
-                      <td>{client?.service_description}</td>
+                      <td className="py-2">{r.date}</td>
+                      <td>{r.description}</td>
                       <td>
-                        {refNum ? (
+                        {r.reference ? (
                           <TooltipProvider>
                             <Tooltip>
                               <TooltipTrigger asChild>
                                 <span className="inline-flex items-center gap-1 cursor-default">
-                                  {refNum}
+                                  {r.reference}
                                   {refDesc && <Info className="w-3 h-3 text-muted-foreground" />}
                                 </span>
                               </TooltipTrigger>
@@ -431,16 +475,15 @@ export default function InvoiceDetail() {
                           </TooltipProvider>
                         ) : '-'}
                       </td>
-                      <td>{s.rate_name || 'Standard'}</td>
-                      <td className="text-right">{s.invoice_hours.toFixed(2)}</td>
-                      <td className="text-right">${s.invoice_rate}</td>
-                      <td className="text-right font-medium">${s.invoice_amount.toFixed(2)}</td>
+                      <td className="text-right">{r.hoursLabel}</td>
+                      <td className="text-right">{r.rateLabel}</td>
+                      <td className="text-right font-medium">${r.amount.toFixed(2)}</td>
                     </tr>
                   );
                 })}
                 <tr className="font-bold">
-                  <td colSpan={6} className="py-2">Total</td>
-                  <td className="text-right">${Number(invoice.total_amount).toFixed(2)}</td>
+                  <td colSpan={5} className="py-2">Total</td>
+                  <td className="text-right">${invoiceTotal.toFixed(2)}</td>
                 </tr>
               </tbody>
             </table>

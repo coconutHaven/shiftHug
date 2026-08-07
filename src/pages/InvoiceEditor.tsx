@@ -14,6 +14,7 @@ import { Plus, Trash2, CalendarIcon, FileText, CalendarRange, Sparkles, Info } f
 import { format, eachDayOfInterval, getDay } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { parseShiftDateStr, sortShiftsByDate } from '@/lib/shiftDates';
+import { calculateShift, invoiceLineTotal } from '@/lib/shiftCalculations';
 import { useToast } from '@/hooks/use-toast';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
@@ -58,26 +59,6 @@ function normalizeShiftExpenses(raw: unknown): Expense[] {
     }
   }
   return [];
-}
-
-function calculateShift(shift: InvoiceShift): InvoiceShift {
-  const hoursAmount = shift.hours * shift.hourly_rate;
-  const kmAmount = shift.km * shift.km_rate;
-  const expensesTotal = shift.expenses.reduce((sum, e) => sum + e.amount, 0);
-  const shiftTotal = Math.round((hoursAmount + kmAmount + expensesTotal) * 100) / 100;
-  const invoiceRate = shift.hourly_rate;
-  const divisor = invoiceRate > 0 ? invoiceRate : 1;
-  const invoiceHours = Math.round((shiftTotal / divisor) * 100) / 100;
-  const invoiceAmount = shiftTotal;
-
-  return {
-    ...shift,
-    expenses_total: expensesTotal,
-    shift_total: shiftTotal,
-    invoice_hours: invoiceHours,
-    invoice_rate: invoiceRate,
-    invoice_amount: invoiceAmount,
-  };
 }
 
 function ShiftRow({ shift, index, onChange, onRemove, clientRates }: {
@@ -395,7 +376,7 @@ export default function InvoiceEditor() {
     toast({ title: `Added ${newShifts.length} shift${newShifts.length !== 1 ? 's' : ''}` });
   };
 
-  const totalAmount = shifts.reduce((sum, s) => sum + s.invoice_amount, 0);
+  const totalAmount = invoiceLineTotal(shifts);
 
   const parsedInvoiceNumberOverride = (): number | undefined => {
     const t = customNumber.trim();
@@ -604,6 +585,7 @@ export default function InvoiceEditor() {
               <div>
                 <p className="text-sm text-muted-foreground">Invoice Total</p>
                 <p className="text-3xl font-bold font-heading text-foreground">${totalAmount.toFixed(2)}</p>
+                <p className="text-xs text-muted-foreground mt-1">Labour only (hours × rate). Add travel/expenses optionally when generating the invoice PDF.</p>
               </div>
               <div className="text-right text-sm text-muted-foreground">
                 <p>{shifts.length} shift{shifts.length !== 1 ? 's' : ''}</p>

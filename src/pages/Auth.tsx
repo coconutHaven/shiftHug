@@ -20,13 +20,17 @@ export default function Auth() {
     try {
       if (isSignUp) {
         await signUp(email, password);
-        toast({ title: 'Account created! 🎉', description: 'Check your email to confirm.' });
+        toast({
+          title: 'Account created',
+          description: 'Check your email to confirm, then sign in.',
+        });
       } else {
         await signIn(email, password);
-        toast({ title: 'Welcome back! 💛' });
+        toast({ title: 'Welcome back' });
       }
-    } catch (err: any) {
-      toast({ title: 'Oops!', description: err.message, variant: 'destructive' });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Something went wrong';
+      toast({ title: 'Error', description: message, variant: 'destructive' });
     } finally {
       setLoading(false);
     }
@@ -40,7 +44,7 @@ export default function Auth() {
             <Heart className="w-8 h-8 text-primary-foreground" />
           </div>
           <h1 className="text-3xl font-bold font-heading text-foreground">shiftHug</h1>
-          <p className="text-muted-foreground mt-2 font-body">NDIS Invoice Generator</p>
+          <p className="text-muted-foreground mt-2 font-body">Invoice Generator</p>
         </div>
 
         <Card className="shadow-card border-border">
