@@ -8,6 +8,7 @@ export interface ClientRate {
   rate_name: string;
   rate_amount: number;
   reference_number?: string | null;
+  reference_description?: string | null;
 }
 
 export interface FixedShiftExpense {
@@ -28,6 +29,7 @@ export interface FixedShift {
   mileage_rate?: number | null;
   expenses?: FixedShiftExpense[];
   reference_number?: string | null;
+  reference_description?: string | null;
 }
 
 export interface Client {

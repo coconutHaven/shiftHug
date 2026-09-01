@@ -43,8 +43,8 @@ export default function Auth() {
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl gradient-primary mb-4">
             <Heart className="w-8 h-8 text-primary-foreground" />
           </div>
-          <h1 className="text-3xl font-bold font-heading text-foreground">shiftHug</h1>
-          <p className="text-muted-foreground mt-2 font-body">Invoice Generator</p>
+          <h1 className="text-3xl font-bold font-heading text-foreground">SupportMate</h1>
+          <p className="text-muted-foreground mt-2 font-body">NDIS Invoice Generator</p>
         </div>
 
         <Card className="shadow-card border-border">

@@ -7,7 +7,7 @@ interface ThemeContextType {
   setTheme: (theme: ThemeOption) => void;
 }
 
-const THEME_STORAGE_KEY = 'shifthug-theme';
+const THEME_STORAGE_KEY = 'supportmate-theme';
 const LEGACY_THEME_KEY = 'ndis-theme';
 
 const ThemeContext = createContext<ThemeContextType>({ theme: 'ocean', setTheme: () => {} });

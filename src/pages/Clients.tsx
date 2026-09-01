@@ -15,11 +15,18 @@ function ClientRatesSection({ clientId }: { clientId: string }) {
   const [name, setName] = useState('');
   const [amount, setAmount] = useState('');
   const [refNum, setRefNum] = useState('');
+  const [refDesc, setRefDesc] = useState('');
 
   const handleAdd = () => {
     if (!name || !amount) return;
-    addRate.mutate({ client_id: clientId, rate_name: name, rate_amount: parseFloat(amount), reference_number: refNum || null });
-    setName(''); setAmount(''); setRefNum('');
+    addRate.mutate({
+      client_id: clientId,
+      rate_name: name,
+      rate_amount: parseFloat(amount),
+      reference_number: refNum || null,
+      reference_description: refDesc || null,
+    });
+    setName(''); setAmount(''); setRefNum(''); setRefDesc('');
   };
 
   return (
@@ -30,6 +37,7 @@ function ClientRatesSection({ clientId }: { clientId: string }) {
           <div>
             <span className="text-sm font-medium">{r.rate_name}: ${r.rate_amount}/hr</span>
             {r.reference_number && <p className="text-xs text-muted-foreground">{r.reference_number}</p>}
+            {r.reference_description && <p className="text-xs text-muted-foreground">{r.reference_description}</p>}
           </div>
           <Button variant="ghost" size="icon" onClick={() => deleteRate.mutate(r.id)}>
             <Trash2 className="w-3 h-3" />
@@ -41,8 +49,9 @@ function ClientRatesSection({ clientId }: { clientId: string }) {
           <Input placeholder="Rate name" value={name} onChange={e => setName(e.target.value)} className="text-sm" />
           <Input type="number" placeholder="$/hr" value={amount} onChange={e => setAmount(e.target.value)} className="w-24 text-sm" />
         </div>
+        <Input placeholder="Ref # (e.g. 04_104_0125_6_1)" value={refNum} onChange={e => setRefNum(e.target.value)} className="text-sm" />
         <div className="flex gap-2">
-          <Input placeholder="Ref # (e.g. 04_104_0125_6_1)" value={refNum} onChange={e => setRefNum(e.target.value)} className="text-sm flex-1" />
+          <Input placeholder="Description" value={refDesc} onChange={e => setRefDesc(e.target.value)} className="text-sm flex-1" />
           <Button size="sm" onClick={handleAdd}><Plus className="w-3 h-3" /></Button>
         </div>
       </div>
@@ -57,6 +66,7 @@ interface ShiftEditForm {
   mileage: string;
   mileage_rate: string;
   reference_number: string;
+  reference_description: string;
   expenses: FixedShiftExpense[];
 }
 
@@ -65,7 +75,7 @@ function FixedShiftsSection({ clientId }: { clientId: string }) {
   const { toast } = useToast();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<ShiftEditForm>({
-    day_of_week: '1', default_hours: '', hourly_rate: '', mileage: '', mileage_rate: '', reference_number: '', expenses: [],
+    day_of_week: '1', default_hours: '', hourly_rate: '', mileage: '', mileage_rate: '', reference_number: '', reference_description: '', expenses: [],
   });
   const [newExpName, setNewExpName] = useState('');
   const [newExpAmount, setNewExpAmount] = useState('');
@@ -76,6 +86,7 @@ function FixedShiftsSection({ clientId }: { clientId: string }) {
   const [addMileage, setAddMileage] = useState('');
   const [addMileageRate, setAddMileageRate] = useState('');
   const [addRefNum, setAddRefNum] = useState('');
+  const [addRefDesc, setAddRefDesc] = useState('');
 
   const startEdit = (s: typeof shifts[0]) => {
     setEditingId(s.id);
@@ -86,6 +97,7 @@ function FixedShiftsSection({ clientId }: { clientId: string }) {
       mileage: s.mileage != null ? String(s.mileage) : '',
       mileage_rate: s.mileage_rate != null ? String(s.mileage_rate) : '',
       reference_number: s.reference_number ?? '',
+      reference_description: s.reference_description ?? '',
       expenses: s.expenses ?? [],
     });
     setNewExpName(''); setNewExpAmount('');
@@ -103,6 +115,7 @@ function FixedShiftsSection({ clientId }: { clientId: string }) {
       mileage: editForm.mileage ? parseFloat(editForm.mileage) : null,
       mileage_rate: editForm.mileage_rate ? parseFloat(editForm.mileage_rate) : null,
       reference_number: editForm.reference_number || null,
+      reference_description: editForm.reference_description || null,
       expenses: editForm.expenses,
     });
     setEditingId(null);
@@ -130,9 +143,10 @@ function FixedShiftsSection({ clientId }: { clientId: string }) {
       mileage: addMileage ? parseFloat(addMileage) : null,
       mileage_rate: addMileageRate ? parseFloat(addMileageRate) : null,
       reference_number: addRefNum || null,
+      reference_description: addRefDesc || null,
       expenses: [],
     });
-    setAddHours(''); setAddRate(''); setAddMileage(''); setAddMileageRate(''); setAddRefNum('');
+    setAddHours(''); setAddRate(''); setAddMileage(''); setAddMileageRate(''); setAddRefNum(''); setAddRefDesc('');
   };
 
   return (
@@ -154,6 +168,7 @@ function FixedShiftsSection({ clientId }: { clientId: string }) {
                 <Input type="number" placeholder="$/km" value={editForm.mileage_rate} onChange={e => setEditForm(f => ({ ...f, mileage_rate: e.target.value }))} className="w-20 text-sm" />
                 <Input placeholder="Ref #" value={editForm.reference_number} onChange={e => setEditForm(f => ({ ...f, reference_number: e.target.value }))} className="text-sm flex-1" />
               </div>
+              <Input placeholder="Description" value={editForm.reference_description} onChange={e => setEditForm(f => ({ ...f, reference_description: e.target.value }))} className="text-sm" />
               <div>
                 <Label className="text-xs text-muted-foreground">Fixed Expenses</Label>
                 {editForm.expenses.length > 0 && (
@@ -194,6 +209,7 @@ function FixedShiftsSection({ clientId }: { clientId: string }) {
                 </div>
               </div>
               {s.reference_number && <p className="text-xs text-muted-foreground mt-0.5">{s.reference_number}</p>}
+              {s.reference_description && <p className="text-xs text-muted-foreground">{s.reference_description}</p>}
               {s.expenses && s.expenses.length > 0 && (
                 <div className="flex flex-wrap gap-1 mt-1">
                   {s.expenses.map((exp, i) => (
@@ -219,6 +235,9 @@ function FixedShiftsSection({ clientId }: { clientId: string }) {
           <Input type="number" placeholder="km" value={addMileage} onChange={e => setAddMileage(e.target.value)} className="w-20 text-sm" />
           <Input type="number" placeholder="$/km" value={addMileageRate} onChange={e => setAddMileageRate(e.target.value)} className="w-20 text-sm" />
           <Input placeholder="Ref #" value={addRefNum} onChange={e => setAddRefNum(e.target.value)} className="text-sm flex-1" />
+        </div>
+        <div className="flex gap-2">
+          <Input placeholder="Description" value={addRefDesc} onChange={e => setAddRefDesc(e.target.value)} className="text-sm flex-1" />
           <Button size="sm" onClick={handleAdd}><Plus className="w-3 h-3" /></Button>
         </div>
       </div>

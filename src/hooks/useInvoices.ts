@@ -17,6 +17,8 @@ export interface InvoiceShift {
   hourly_rate: number;
   rate_name: string;
   reference_number?: string | null;
+  reference_description?: string | null;
+  fixed_shift_id?: string | null;
   km: number;
   km_rate: number;
   expenses: Expense[];

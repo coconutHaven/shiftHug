@@ -1,4 +1,4 @@
-# shiftHug
+# SupportMate
 
 Invoice generator for support workers — clients, shifts, calculations, and PDF invoices.
 

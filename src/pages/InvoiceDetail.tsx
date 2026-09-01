@@ -16,23 +16,9 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { sortShiftsByDate } from '@/lib/shiftDates';
 import { buildInvoiceDisplayRows, invoiceLineTotal } from '@/lib/shiftCalculations';
+import { descriptionForReference } from '@/lib/referenceNumbers';
 
-const REFERENCE_DESCRIPTIONS: Record<string, string> = {
-  '04_104_0125_6_1': 'Assistance with Personal Activities',
-  '04_102_0125_6_1': 'Personal Care Support',
-  '04_104_0115_6_1': 'Assistance with Personal Activities (High)',
-  '04_210_0125_6_1': 'Assistance with Personal Activities — Standard — Weeknight',
-  '04_104_0125_6_3': 'Assistance with Personal Activities — Standard — Saturday',
-  '04_104_0125_6_4': 'Assistance with Personal Activities — Standard — Sunday',
-  '04_104_0125_6_5': 'Assistance with Personal Activities — Standard — Public Holiday',
-  '04_103_0125_6_1': 'Assistance with Personal Activities — High — Weekday',
-  '04_399_0125_6_1': 'House and/or Yard Maintenance',
-  '01_011_0107_1_3': 'Daily Activities — Standard — Saturday',
-  '04_104_0125_6_2': 'Assistance with Personal Activities — Evening',
-  '04_210_0125_6_3': 'Assistance with Personal Activities — Evening — Saturday',
-};
-
-const APP_NAME = 'shiftHug';
+const APP_NAME = 'SupportMate';
 
 /** Ocean Breeze–aligned PDF palette (teal / slate, print-friendly) */
 const Pdf = {
@@ -455,7 +441,7 @@ export default function InvoiceDetail() {
               </thead>
               <tbody>
                 {invoiceRows.map((r, i) => {
-                  const refDesc = r.reference ? REFERENCE_DESCRIPTIONS[r.reference] : undefined;
+                  const refDesc = r.reference ? descriptionForReference(r.reference, r.description !== client?.service_description ? r.description : null) : undefined;
                   return (
                     <tr key={i} className="border-b border-border/50">
                       <td className="py-2">{r.date}</td>

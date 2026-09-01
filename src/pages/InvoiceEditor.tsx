@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { useClients } from '@/hooks/useClients';
+import { useClients, useFixedShifts, type ClientRate, type FixedShift } from '@/hooks/useClients';
 import { useInvoices, InvoiceShift, Expense } from '@/hooks/useInvoices';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -17,8 +17,60 @@ import { parseShiftDateStr, sortShiftsByDate } from '@/lib/shiftDates';
 import { calculateShift, invoiceLineTotal } from '@/lib/shiftCalculations';
 import { useToast } from '@/hooks/use-toast';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import {
+  DEFAULT_REFERENCE_DESCRIPTIONS,
+  collectReferencePresets,
+  type ReferencePreset,
+} from '@/lib/referenceNumbers';
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const FULL_DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+/** Fields copied when applying one shift's edits to matching shifts on the invoice or client template. */
+const PROPAGATABLE_SHIFT_FIELDS = [
+  'hours',
+  'hourly_rate',
+  'km',
+  'km_rate',
+  'rate_name',
+  'reference_number',
+  'reference_description',
+] as const;
+
+function shiftsMatchGroup(a: InvoiceShift, b: InvoiceShift): boolean {
+  if (a.fixed_shift_id && b.fixed_shift_id) {
+    return a.fixed_shift_id === b.fixed_shift_id;
+  }
+  return a.day_name === b.day_name && a.rate_name === b.rate_name;
+}
+
+function shiftPropagatableFieldsChanged(before: InvoiceShift, after: InvoiceShift): boolean {
+  return PROPAGATABLE_SHIFT_FIELDS.some(field => before[field] !== after[field]);
+}
+
+function applyPropagatableFields(target: InvoiceShift, source: InvoiceShift): InvoiceShift {
+  const next = { ...target };
+  for (const field of PROPAGATABLE_SHIFT_FIELDS) {
+    next[field] = source[field] ?? null;
+  }
+  return next;
+}
+
+function countMatchingSiblings(shifts: InvoiceShift[], index: number): number {
+  const source = shifts[index];
+  if (!source) return 0;
+  return shifts.filter((s, i) => i !== index && shiftsMatchGroup(source, s)).length;
+}
 
 function withShiftDate(shift: InvoiceShift, date: Date): InvoiceShift {
   return {
@@ -27,21 +79,6 @@ function withShiftDate(shift: InvoiceShift, date: Date): InvoiceShift {
     day_name: DAY_NAMES[getDay(date)],
   };
 }
-
-const REFERENCE_DESCRIPTIONS: Record<string, string> = {
-  '04_104_0125_6_1': 'Assistance with Personal Activities',
-  '04_102_0125_6_1': 'Personal Care Support',
-  '04_104_0115_6_1': 'Assistance with Personal Activities (High)',
-  '04_210_0125_6_1': 'Assistance with Personal Activities — Standard — Weeknight',
-  '04_104_0125_6_3': 'Assistance with Personal Activities — Standard — Saturday',
-  '04_104_0125_6_4': 'Assistance with Personal Activities — Standard — Sunday',
-  '04_104_0125_6_5': 'Assistance with Personal Activities — Standard — Public Holiday',
-  '04_103_0125_6_1': 'Assistance with Personal Activities — High — Weekday',
-  '04_399_0125_6_1': 'House and/or Yard Maintenance',
-  '01_011_0107_1_3': 'Daily Activities — Standard — Saturday',
-  '04_104_0125_6_2': 'Assistance with Personal Activities — Evening',
-  '04_210_0125_6_3': 'Assistance with Personal Activities — Evening — Saturday',
-};
 
 /** Normalise fixed-shift expenses from API (array, JSON string, or missing). */
 function normalizeShiftExpenses(raw: unknown): Expense[] {
@@ -61,18 +98,29 @@ function normalizeShiftExpenses(raw: unknown): Expense[] {
   return [];
 }
 
-function ShiftRow({ shift, index, onChange, onRemove, clientRates }: {
+function ShiftRow({ shift, index, onChange, onRemove, clientRates, previousRefs, template, onEditComplete }: {
   shift: InvoiceShift; index: number;
   onChange: (index: number, shift: InvoiceShift) => void;
   onRemove: (index: number) => void;
-  clientRates: { rate_name: string; rate_amount: number; reference_number?: string | null }[];
+  clientRates: ClientRate[];
+  previousRefs: ReferencePreset[];
+  template?: FixedShift | null;
+  onEditComplete?: (index: number, baseline: InvoiceShift, current: InvoiceShift) => void;
 }) {
   const [expenseDialog, setExpenseDialog] = useState(false);
   const [newExpName, setNewExpName] = useState('');
   const [newExpAmount, setNewExpAmount] = useState('');
+  const baselineRef = useRef<InvoiceShift | null>(null);
+
+  const isFromTemplate = Boolean(shift.fixed_shift_id && template);
+  const isCustom = !shift.fixed_shift_id;
 
   const update = (field: string, value: unknown) => {
     onChange(index, { ...shift, [field]: value });
+  };
+
+  const setReference = (number: string | null, description: string | null) => {
+    onChange(index, { ...shift, reference_number: number, reference_description: description });
   };
 
   const addExpense = () => {
@@ -86,12 +134,38 @@ function ShiftRow({ shift, index, onChange, onRemove, clientRates }: {
     onChange(index, { ...shift, expenses: shift.expenses.filter((_, idx) => idx !== i) });
   };
 
+  const handleCardFocus = () => {
+    if (!baselineRef.current) {
+      baselineRef.current = { ...shift, expenses: [...shift.expenses] };
+    }
+  };
+
+  const handleCardBlur = (e: React.FocusEvent<HTMLDivElement>) => {
+    if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+    const baseline = baselineRef.current;
+    baselineRef.current = null;
+    if (!baseline || !onEditComplete) return;
+    if (shiftPropagatableFieldsChanged(baseline, shift)) {
+      onEditComplete(index, baseline, shift);
+    }
+  };
+
+  const descHint = shift.reference_description
+    || (shift.reference_number ? DEFAULT_REFERENCE_DESCRIPTIONS[shift.reference_number] : undefined);
+
   return (
-    <Card className="shadow-soft animate-fade-in">
+    <Card
+      className="shadow-soft animate-fade-in"
+      onFocusCapture={handleCardFocus}
+      onBlurCapture={handleCardBlur}
+    >
       <CardContent className="p-4">
         <div className="flex items-start justify-between mb-3 gap-2">
           <div className="flex flex-wrap items-end gap-2">
             <span className="text-xs font-semibold px-2 py-1 rounded-full bg-primary/10 text-primary">{shift.day_name}</span>
+            {isFromTemplate && (
+              <span className="text-xs px-2 py-1 rounded-full bg-muted text-muted-foreground">Weekly template</span>
+            )}
             <div>
               <Label className="text-xs">Shift date</Label>
               <Popover>
@@ -154,6 +228,7 @@ function ShiftRow({ shift, index, onChange, onRemove, clientRates }: {
                   rate_name: e.target.value,
                   hourly_rate: rate?.rate_amount || shift.hourly_rate,
                   reference_number: rate?.reference_number ?? shift.reference_number,
+                  reference_description: rate?.reference_description ?? shift.reference_description,
                 });
               }}
               className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm mt-1"
@@ -164,28 +239,68 @@ function ShiftRow({ shift, index, onChange, onRemove, clientRates }: {
           </div>
         )}
 
-        <div className="mt-2">
-          <div className="flex items-center gap-1">
-            <Label className="text-xs">Reference Number</Label>
-            {shift.reference_number && REFERENCE_DESCRIPTIONS[shift.reference_number] && (
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Info className="w-3 h-3 text-muted-foreground cursor-help" />
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>{REFERENCE_DESCRIPTIONS[shift.reference_number]}</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            )}
+        <div className="mt-2 space-y-2">
+          {isCustom && previousRefs.length > 0 && (
+            <div>
+              <Label className="text-xs">Previously used</Label>
+              <select
+                value=""
+                onChange={e => {
+                  const preset = previousRefs[Number(e.target.value)];
+                  if (!preset) return;
+                  setReference(preset.reference_number || null, preset.reference_description || null);
+                }}
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm mt-1"
+              >
+                <option value="">Choose a previous reference…</option>
+                {previousRefs.map((p, i) => (
+                  <option key={`${p.reference_number}-${p.reference_description}-${i}`} value={i}>
+                    {[p.reference_number, p.reference_description].filter(Boolean).join(' — ') || 'Untitled'}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          <div>
+            <div className="flex items-center gap-1">
+              <Label className="text-xs">Reference Number</Label>
+              {descHint && (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Info className="w-3 h-3 text-muted-foreground cursor-help" />
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>{descHint}</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              )}
+            </div>
+            <Input
+              value={shift.reference_number ?? ''}
+              onChange={e => {
+                const next = e.target.value || null;
+                const known = next ? DEFAULT_REFERENCE_DESCRIPTIONS[next] : undefined;
+                const nextDesc = shift.reference_description
+                  || known
+                  || null;
+                onChange(index, { ...shift, reference_number: next, reference_description: nextDesc });
+              }}
+              placeholder="e.g. 04_104_0125_6_1"
+              className="mt-1"
+            />
           </div>
-          <Input
-            value={shift.reference_number ?? ''}
-            onChange={e => update('reference_number', e.target.value || null)}
-            placeholder="e.g. 04_104_0125_6_1"
-            className="mt-1"
-          />
+          <div>
+            <Label className="text-xs">Description</Label>
+            <Input
+              value={shift.reference_description ?? ''}
+              onChange={e => update('reference_description', e.target.value || null)}
+              placeholder="e.g. Community participation support"
+              className="mt-1"
+            />
+          </div>
         </div>
 
         <div className="mt-3">
@@ -253,7 +368,16 @@ export default function InvoiceEditor() {
   const [weeklyDialogOpen, setWeeklyDialogOpen] = useState(false);
   const [startDate, setStartDate] = useState<Date>();
   const [endDate, setEndDate] = useState<Date>();
+  const [startDatePopoverOpen, setStartDatePopoverOpen] = useState(false);
+  const [endDatePopoverOpen, setEndDatePopoverOpen] = useState(false);
   const [editLoaded, setEditLoaded] = useState(!isEditMode);
+  const [applyDialog, setApplyDialog] = useState<{
+    index: number;
+    edited: InvoiceShift;
+    siblingCount: number;
+    hasTemplate: boolean;
+    templateDayName: string;
+  } | null>(null);
 
   const draftInvoice = useMemo(
     () => (isEditMode ? invoices.find(i => i.id === editInvoiceId) : undefined),
@@ -287,6 +411,20 @@ export default function InvoiceEditor() {
 
   const selectedClient = clients.find(c => c.id === clientId);
   const clientRates = selectedClient?.client_rates ?? [];
+  const { updateShift } = useFixedShifts(clientId);
+
+  const previousRefs = useMemo(
+    () => collectReferencePresets({
+      clientRef: selectedClient?.ref_number,
+      clientDescription: selectedClient?.service_description,
+      rates: selectedClient?.client_rates,
+      fixedShifts: selectedClient?.fixed_shifts,
+      invoiceShifts: invoices
+        .filter(inv => inv.client_id === clientId)
+        .flatMap(inv => inv.invoice_shifts ?? []),
+    }),
+    [selectedClient, invoices, clientId]
+  );
 
   useEffect(() => {
     if (isEditMode) return;
@@ -315,6 +453,61 @@ export default function InvoiceEditor() {
     setShifts(recalcShifts(shifts.filter((_, i) => i !== index)));
   };
 
+  const handleShiftEditComplete = (index: number, _baseline: InvoiceShift, current: InvoiceShift) => {
+    const siblingCount = countMatchingSiblings(shifts, index);
+    const template = selectedClient?.fixed_shifts?.find(fs => fs.id === current.fixed_shift_id);
+    const hasTemplate = Boolean(current.fixed_shift_id && template);
+    if (siblingCount === 0 && !hasTemplate) return;
+
+    setApplyDialog({
+      index,
+      edited: current,
+      siblingCount,
+      hasTemplate,
+      templateDayName: template != null ? FULL_DAY_NAMES[template.day_of_week] : current.day_name,
+    });
+  };
+
+  const applyToMatchingOnInvoice = () => {
+    if (!applyDialog) return;
+    const { index, edited } = applyDialog;
+    const source = shifts[index] ?? edited;
+    const updated = shifts.map((s, i) => {
+      if (i === index) return s;
+      if (shiftsMatchGroup(source, s)) {
+        return applyPropagatableFields(s, edited);
+      }
+      return s;
+    });
+    setShifts(recalcShifts(updated));
+    setApplyDialog(null);
+    toast({
+      title: 'Invoice shifts updated',
+      description: `Applied changes to ${applyDialog.siblingCount} matching shift${applyDialog.siblingCount !== 1 ? 's' : ''} on this invoice.`,
+    });
+  };
+
+  const applyToClientTemplate = () => {
+    if (!applyDialog) return;
+    const { edited } = applyDialog;
+    if (!edited.fixed_shift_id) return;
+    updateShift.mutate({
+      id: edited.fixed_shift_id,
+      reference_number: edited.reference_number ?? null,
+      reference_description: edited.reference_description ?? null,
+      default_hours: edited.hours,
+      hourly_rate: edited.hourly_rate,
+      mileage: edited.km,
+      mileage_rate: edited.km_rate,
+      rate_name: edited.rate_name,
+    });
+    setApplyDialog(null);
+    toast({
+      title: 'Weekly template updated',
+      description: 'Future invoices generated from this client profile will use these values.',
+    });
+  };
+
   const addCustomShift = () => {
     if (!selectedClient) { toast({ title: 'Select a client first', variant: 'destructive' }); return; }
     const today = new Date();
@@ -323,6 +516,8 @@ export default function InvoiceEditor() {
       day_name: DAY_NAMES[today.getDay()],
       hours: 0, hourly_rate: selectedClient.hourly_rate, rate_name: 'Standard',
       reference_number: selectedClient.ref_number ?? null,
+      reference_description: selectedClient.service_description ?? null,
+      fixed_shift_id: null,
       km: 0, km_rate: selectedClient.km_rate,
       expenses: [], expenses_total: 0, shift_total: 0,
       invoice_hours: 0, invoice_rate: selectedClient.hourly_rate, invoice_amount: 0, sort_order: shifts.length,
@@ -348,6 +543,11 @@ export default function InvoiceEditor() {
         const rate = fs.rate_name && clientRates.find(r => r.rate_name === fs.rate_name);
         const shiftHourlyRate = fs.hourly_rate ?? (rate ? rate.rate_amount : selectedClient.hourly_rate);
         const shiftRefNum = fs.reference_number ?? (rate?.reference_number ?? selectedClient.ref_number ?? null);
+        const shiftRefDesc = fs.reference_description
+          ?? rate?.reference_description
+          ?? selectedClient.service_description
+          ?? (shiftRefNum ? DEFAULT_REFERENCE_DESCRIPTIONS[shiftRefNum] : null)
+          ?? null;
         const fixedExpenses = normalizeShiftExpenses(fs.expenses as unknown);
         newShifts.push({
           shift_date: format(day, 'd/M'),
@@ -356,6 +556,8 @@ export default function InvoiceEditor() {
           hourly_rate: shiftHourlyRate,
           rate_name: fs.rate_name || 'Standard',
           reference_number: shiftRefNum,
+          reference_description: shiftRefDesc,
+          fixed_shift_id: fs.id,
           km: fs.mileage ?? 0,
           km_rate: fs.mileage_rate ?? selectedClient.km_rate,
           expenses: fixedExpenses,
@@ -509,7 +711,16 @@ export default function InvoiceEditor() {
       </Card>
 
       <div className="flex flex-wrap gap-3">
-        <Dialog open={weeklyDialogOpen} onOpenChange={setWeeklyDialogOpen}>
+        <Dialog
+          open={weeklyDialogOpen}
+          onOpenChange={open => {
+            setWeeklyDialogOpen(open);
+            if (!open) {
+              setStartDatePopoverOpen(false);
+              setEndDatePopoverOpen(false);
+            }
+          }}
+        >
           <DialogTrigger asChild>
             <Button variant="secondary" className="gap-2" disabled={!clientId}>
               <CalendarRange className="w-4 h-4" /> Add Fixed Shifts
@@ -527,7 +738,7 @@ export default function InvoiceEditor() {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label>Start Date</Label>
-                <Popover>
+                <Popover open={startDatePopoverOpen} onOpenChange={setStartDatePopoverOpen}>
                   <PopoverTrigger asChild>
                     <Button variant="outline" className={cn('w-full justify-start text-left', !startDate && 'text-muted-foreground')}>
                       <CalendarIcon className="mr-2 w-4 h-4" />
@@ -535,13 +746,21 @@ export default function InvoiceEditor() {
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar mode="single" selected={startDate} onSelect={setStartDate} className="pointer-events-auto" />
+                    <Calendar
+                      mode="single"
+                      selected={startDate}
+                      onSelect={date => {
+                        setStartDate(date);
+                        if (date) setStartDatePopoverOpen(false);
+                      }}
+                      className="pointer-events-auto"
+                    />
                   </PopoverContent>
                 </Popover>
               </div>
               <div>
                 <Label>End Date</Label>
-                <Popover>
+                <Popover open={endDatePopoverOpen} onOpenChange={setEndDatePopoverOpen}>
                   <PopoverTrigger asChild>
                     <Button variant="outline" className={cn('w-full justify-start text-left', !endDate && 'text-muted-foreground')}>
                       <CalendarIcon className="mr-2 w-4 h-4" />
@@ -549,7 +768,15 @@ export default function InvoiceEditor() {
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar mode="single" selected={endDate} onSelect={setEndDate} className="pointer-events-auto" />
+                    <Calendar
+                      mode="single"
+                      selected={endDate}
+                      onSelect={date => {
+                        setEndDate(date);
+                        if (date) setEndDatePopoverOpen(false);
+                      }}
+                      className="pointer-events-auto"
+                    />
                   </PopoverContent>
                 </Popover>
               </div>
@@ -574,9 +801,52 @@ export default function InvoiceEditor() {
             onChange={handleShiftChange}
             onRemove={handleRemoveShift}
             clientRates={clientRates}
+            previousRefs={previousRefs}
+            template={selectedClient?.fixed_shifts?.find(fs => fs.id === shift.fixed_shift_id) ?? null}
+            onEditComplete={handleShiftEditComplete}
           />
         ))}
       </div>
+
+      <AlertDialog open={applyDialog != null} onOpenChange={open => { if (!open) setApplyDialog(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Apply changes to matching shifts?</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2 text-sm text-muted-foreground">
+                <p>
+                  You edited a {applyDialog?.templateDayName ?? 'weekly'} shift
+                  {applyDialog?.hasTemplate ? ' from this client\'s weekly template' : ''}.
+                </p>
+                {applyDialog && applyDialog.siblingCount > 0 && (
+                  <p>
+                    {applyDialog.siblingCount} other matching shift{applyDialog.siblingCount !== 1 ? 's' : ''} on this invoice
+                    can be updated with the same hours, rates, mileage, and reference details.
+                  </p>
+                )}
+                {applyDialog?.hasTemplate && (
+                  <p>
+                    You can also save these values to the client&apos;s weekly shift profile for future invoices.
+                  </p>
+                )}
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex-col gap-2 sm:flex-col sm:space-x-0">
+            <AlertDialogCancel className="mt-0">This shift only</AlertDialogCancel>
+            {applyDialog && applyDialog.siblingCount > 0 && (
+              <AlertDialogAction onClick={applyToMatchingOnInvoice}>
+                All matching on this invoice ({applyDialog.siblingCount})
+              </AlertDialogAction>
+            )}
+            {applyDialog?.hasTemplate && (
+              <AlertDialogAction onClick={applyToClientTemplate}>
+                Update client weekly template
+              </AlertDialogAction>
+            )}
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {shifts.length > 0 && (
         <>

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Double-click this file in Finder to start shiftHug (dev server + browser).
+# Double-click this file in Finder to start SupportMate (dev server + browser).
 set -e
 cd "$(dirname "$0")" || exit 1
 
@@ -15,7 +15,7 @@ if [ ! -d "node_modules" ]; then
 fi
 
 echo ""
-echo "Starting shiftHug..."
+echo "Starting SupportMate..."
 echo "  App: http://localhost:8080"
 echo "  Stop: close this window or press Ctrl+C"
 echo ""
